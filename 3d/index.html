@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Deezy's Mansion — Interactive 3D VR World</title>
 <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+<meta name="mansion-version" content="v2-2026-11-15-rebuild">
 <style>
   html,body{margin:0;padding:0;background:#000;font-family:Arial,Helvetica,sans-serif;}
   #hud{position:fixed;top:10px;left:10px;z-index:10;color:#f5d67b;background:rgba(0,0,0,.72);
@@ -25,7 +26,8 @@
 
 <div id="hud">
   <h1>DEEZY'S MANSION — 3D VR WORLD</h1>
-  <div><b>Move:</b> left thumbstick &nbsp; <b>Turn:</b> right thumbstick left/right</div>
+  <div><b>Move:</b> left thumbstick &nbsp; <b>Turn:</b> right thumbstick - smooth, no snap</div>
+  <div><b>Build v2:</b> fixed VR movement, taller grand rooms, richer materials</div>
   <div><b>Interact:</b> point at a glowing gold object + pull <b>trigger</b></div>
   <div><b>Desktop:</b> W A S D to walk, mouse to look, click objects</div>
   <div style="margin-top:6px"><b>Try:</b> kitchen faucet &bull; wall screens (change the walls) &bull;
@@ -36,7 +38,7 @@
 <button id="soundBtn">&#128266; Sound: tap to enable</button>
 <button id="enterVrBtn">ENTER VR</button>
 
-<a-scene id="scene" renderer="antialias:true; colorManagement:true" vr-mode-ui="enabled:true"
+<a-scene id="scene" renderer="antialias:true; colorManagement:true" vr-mode-ui="enabled:true" webxr="referenceSpaceType: local-floor; optionalFeatures: local-floor"
          background="color:#050505" fog="type:linear; color:#050505; near:30; far:70">
   <a-entity id="rig" position="0 0 15.5">
     <a-entity id="cam" camera look-controls="pointerLockEnabled:true" position="0 1.6 0">
@@ -54,13 +56,19 @@
   </a-entity>
   <a-entity cursor="rayOrigin:mouse; fuse:false" raycaster="objects:.interactable; far:60"></a-entity>
 
-  <a-light type="ambient" color="#8a7a4a" intensity="0.55"></a-light>
-  <a-light type="hemisphere" color="#ffe9a8" groundColor="#1a1405" intensity="0.35"></a-light>
-  <a-light type="point" color="#ffd95e" intensity="0.9" distance="22" position="0 3.4 15"></a-light>
-  <a-light type="point" color="#ffd95e" intensity="0.8" distance="22" position="0 3.4 5"></a-light>
-  <a-light type="point" color="#ffd95e" intensity="0.8" distance="22" position="-12 3.4 -5"></a-light>
-  <a-light type="point" color="#7ad0ff" intensity="0.7" distance="20" position="12 3.2 -5"></a-light>
-  <a-light type="point" color="#ffd95e" intensity="0.8" distance="22" position="0 3.4 -15"></a-light>
+  <a-light type="ambient" color="#8a7a4a" intensity="0.7"></a-light>
+  <a-light type="hemisphere" color="#ffe9a8" groundColor="#1a1405" intensity="0.5"></a-light>
+  <a-light type="directional" color="#ffe2b0" intensity="1.1" position="10 16 12" castShadow="true" shadow-camera-left="-24" shadow-camera-right="24" shadow-camera-top="24" shadow-camera-bottom="-24" shadow-camera-far="55" shadow-mapSize="2048 2048" shadow-bias="-0.0004"></a-light>
+  <a-light type="point" color="#ffd95e" intensity="1.5" distance="24" position="0 4.3 15"></a-light>
+  <a-light type="point" color="#ffd95e" intensity="1.4" distance="24" position="0 4.3 5"></a-light>
+  <a-light type="point" color="#ffd95e" intensity="1.2" distance="22" position="-12 4.3 -5"></a-light>
+  <a-light type="point" color="#7ad0ff" intensity="1.2" distance="22" position="12 4.2 -5"></a-light>
+  <a-light type="point" color="#ffd95e" intensity="1.4" distance="24" position="0 4.3 -15"></a-light>
+  <a-light type="point" color="#ffd95e" intensity="1.3" distance="22" position="-12 4.3 5"></a-light>
+  <a-light type="point" color="#ffd95e" intensity="1.3" distance="22" position="12 4.3 5"></a-light>
+  <a-light type="point" color="#ffca7a" intensity="1.1" distance="20" position="-12 4.3 -15"></a-light>
+  <a-light type="point" color="#9fd0ff" intensity="1.1" distance="20" position="12 4.3 -15"></a-light>
+  <a-light type="point" color="#b48cff" intensity="0.9" distance="18" position="0 4.3 -5"></a-light>
 
   <a-entity id="world"></a-entity>
 </a-scene>
@@ -93,6 +101,7 @@ function box(parent,x,y,z,w,h,d,color,opts){
              '; metalness:'+(opts.metal!==undefined?opts.metal:0.25)+
              (opts.opacity!==undefined?'; transparent:true; opacity:'+opts.opacity:'')+
              (opts.emissive?'; emissive:#'+opts.emissive.toString(16).padStart(6,'0')+'; emissiveIntensity:'+(opts.ei||0.6):'')});
+  if(opts.tex) texify(e,opts.tex,opts.txr||1,opts.tyr||1);
   return e;
 }
 function cyl(parent,x,y,z,rT,rB,h,color,opts){
@@ -102,6 +111,7 @@ function cyl(parent,x,y,z,rT,rB,h,color,opts){
     '; roughness:'+(opts.rough!==undefined?opts.rough:0.4)+'; metalness:'+(opts.metal!==undefined?opts.metal:0.3)+
     (opts.opacity!==undefined?'; transparent:true; opacity:'+opts.opacity+'; side:double':'')+
     (opts.emissive?'; emissive:#'+opts.emissive.toString(16).padStart(6,'0')+'; emissiveIntensity:'+(opts.ei||0.6):'')});
+  if(opts.tex) texify(e,opts.tex,opts.txr||1,opts.tyr||1);
   return e;
 }
 function plane(parent,x,y,z,w,h,color,opts){
@@ -112,6 +122,7 @@ function plane(parent,x,y,z,w,h,color,opts){
              '; metalness:'+(opts.metal!==undefined?opts.metal:0.15)+'; side:double'+
              (opts.opacity!==undefined?'; transparent:true; opacity:'+opts.opacity:'')+
              (opts.emissive?'; emissive:#'+opts.emissive.toString(16).padStart(6,'0')+'; emissiveIntensity:'+(opts.ei||0.5):'')});
+  if(opts.tex) texify(e,opts.tex,opts.txr||1,opts.tyr||1);
   return e;
 }
 function label(parent,x,y,z,text,scale,color,ry){
@@ -119,6 +130,68 @@ function label(parent,x,y,z,text,scale,color,ry){
     color:color||'#ffd95e',width:scale||7,rotation:'0 '+(ry||0)+' 0','font':'roboto'});
   return e;
 }
+/* ============ PROCEDURAL TEXTURES (canvas-generated, no external files) ============ */
+var _texCache={}, _texId=0;
+function makeTex(w,h,draw){
+  var c=document.createElement('canvas'); c.width=w; c.height=h; c._tid=(++_texId);
+  draw(c.getContext('2d'),w,h); return c;
+}
+function texify(entity,canvas,rx,ry){
+  if(!entity||!canvas) return;
+  entity.addEventListener('loaded',function(){
+    var mesh=entity.getObject3D&&entity.getObject3D('mesh'); if(!mesh) return;
+    var key=canvas._tid+'_'+rx+'_'+ry, tex=_texCache[key];
+    if(!tex){
+      tex=new THREE.CanvasTexture(canvas);
+      tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.repeat.set(rx||1,ry||1);
+      tex.anisotropy=4; tex.colorSpace=THREE.SRGBColorSpace;
+      _texCache[key]=tex;
+    }
+    mesh.material.map=tex; mesh.material.color.set(0xffffff); mesh.material.needsUpdate=true;
+  });
+}
+var MARBLE_TEX=makeTex(512,512,function(g,w,h){
+  g.fillStyle='#101013'; g.fillRect(0,0,w,h);
+  for(var i=0;i<2600;i++){ g.fillStyle='rgba(255,255,255,'+(Math.random()*0.03)+')'; g.fillRect(Math.random()*w,Math.random()*h,1.6,1.6); }
+  for(var v=0;v<14;v++){
+    g.beginPath(); var x=Math.random()*w,y=0; g.moveTo(x,y);
+    while(y<h){ y+=22+Math.random()*30; x+=(Math.random()-0.5)*46; g.lineTo(x,y); }
+    var gold=v%3===0;
+    g.strokeStyle=gold?'rgba(201,162,39,0.5)':'rgba(210,210,220,0.20)';
+    g.lineWidth=gold?1.6:1; g.stroke();
+  }
+  g.strokeStyle='rgba(201,162,39,0.35)'; g.lineWidth=3; g.strokeRect(1,1,w-2,h-2);
+});
+var PANEL_TEX=makeTex(512,512,function(g,w,h){
+  g.fillStyle='#17171c'; g.fillRect(0,0,w,h);
+  for(var i=0;i<1600;i++){ g.fillStyle='rgba(255,255,255,'+(Math.random()*0.025)+')'; g.fillRect(Math.random()*w,Math.random()*h,1.5,1.5); }
+  function panel(x,y,pw,ph){
+    g.strokeStyle='rgba(201,162,39,0.85)'; g.lineWidth=3; g.strokeRect(x,y,pw,ph);
+    g.strokeStyle='rgba(0,0,0,0.65)'; g.lineWidth=7; g.strokeRect(x+6,y+6,pw-12,ph-12);
+    g.strokeStyle='rgba(255,217,94,0.28)'; g.lineWidth=1.5; g.strokeRect(x+11,y+11,pw-22,ph-22);
+  }
+  panel(28,28,w/2-56,h-56); panel(w/2+28,28,w/2-56,h-56);
+  g.fillStyle='rgba(201,162,39,0.5)'; g.fillRect(0,h/2-1,w,2);
+});
+var STONE_TEX=makeTex(512,512,function(g,w,h){
+  g.fillStyle='#232326'; g.fillRect(0,0,w,h);
+  for(var r=0;r<90;r++){
+    var x=Math.random()*w,y=Math.random()*h,rad=14+Math.random()*36;
+    var grad=g.createRadialGradient(x,y,2,x,y,rad);
+    grad.addColorStop(0,'rgba(120,120,130,0.25)'); grad.addColorStop(1,'rgba(0,0,0,0.28)');
+    g.fillStyle=grad; g.beginPath(); g.arc(x,y,rad,0,6.29); g.fill();
+  }
+  g.strokeStyle='rgba(0,0,0,0.5)';
+  for(var c2=0;c2<26;c2++){ g.beginPath(); var cx2=Math.random()*w,cy2=Math.random()*h; g.moveTo(cx2,cy2); g.lineTo(cx2+(Math.random()-0.5)*70,cy2+(Math.random()-0.5)*70); g.lineWidth=1; g.stroke(); }
+});
+var WOOD_TEX=makeTex(512,256,function(g,w,h){
+  g.fillStyle='#2a1c0d'; g.fillRect(0,0,w,h);
+  for(var i=0;i<46;i++){
+    g.beginPath();
+    for(var x=0;x<=w;x+=16){ var y=i*5.6+Math.sin(x*0.02+i)*2.2; x===0?g.moveTo(x,y):g.lineTo(x,y); }
+    g.strokeStyle='rgba('+(120+((i*37)%60))+','+(80+((i*23)%30))+',30,'+(0.16+(i%4)*0.05)+')'; g.lineWidth=1.6; g.stroke();
+  }
+});
 function addCollider(x,z,w,d,id){
   var c={minX:x-w/2,maxX:x+w/2,minZ:z-d/2,maxZ:z+d/2,id:id||null};
   colliders.push(c); return c;
@@ -128,13 +201,14 @@ function removeCollider(c){
 }
 /* A wall run along X or Z with an optional door gap (gap center + width). */
 function wallRun(x,z,len,alongX,gapC,gapW,h){
-  h=h||4;
+  h=h||5;
   function seg(cx,cz,l){
     if(l<=0.05) return;
     var w=alongX?l:0.3, d=alongX?0.3:l;
-    box(world,cx,h/2,cz,w,h,d,WALLC,{rough:0.85,metal:0.1});
-    // gold trim line near the top
-    box(world,cx,3.55,cz,alongX?l:0.34,0.07,alongX?0.34:l,GOLD,{metal:0.9,rough:0.25,emissive:GOLD,ei:0.25});
+    box(world,cx,h/2,cz,w,h,d,WALLC,{rough:0.85,metal:0.1,tex:PANEL_TEX,txr:Math.max(1,Math.round(l/3.4)),tyr:1.5});
+    // gold trim line near the top + dark bronze baseboard
+    box(world,cx,h-0.45,cz,alongX?l:0.34,0.07,alongX?0.34:l,GOLD,{metal:0.9,rough:0.25,emissive:GOLD,ei:0.25});
+    box(world,cx,0.16,cz,alongX?l:0.33,0.3,alongX?0.33:l,0x2a2008,{rough:0.4,metal:0.7});
     addCollider(cx,cz,w,d);
   }
   if(gapW===undefined||gapW===null){ seg(x,z,len); return; }
@@ -146,17 +220,18 @@ function wallRun(x,z,len,alongX,gapC,gapW,h){
 /* Floor rectangle, optionally with one rectangular hole cut out. */
 function floorRect(cx,cz,w,d,color,hole){
   var y=0.02;
-  if(!hole){ plane(world,cx,y,cz,w,d,color,{rx:-90,rough:0.35,metal:0.4}); return; }
+  if(!hole){ var fp=plane(world,cx,y,cz,w,d,color,{rx:-90,rough:0.22,metal:0.35}); texify(fp,MARBLE_TEX,Math.max(1,Math.round(w/4)),Math.max(1,Math.round(d/4))); return; }
   var x0=cx-w/2,x1=cx+w/2,z0=cz-d/2,z1=cz+d/2;
   var hx0=hole.x-hole.w/2,hx1=hole.x+hole.w/2,hz0=hole.z-hole.d/2,hz1=hole.z+hole.d/2;
   function fr(fx0,fx1,fz0,fz1){
     if(fx1-fx0<0.03||fz1-fz0<0.03) return;
-    plane(world,(fx0+fx1)/2,y,(fz0+fz1)/2,fx1-fx0,fz1-fz0,color,{rx:-90,rough:0.35,metal:0.4});
+    var fq=plane(world,(fx0+fx1)/2,y,(fz0+fz1)/2,fx1-fx0,fz1-fz0,color,{rx:-90,rough:0.22,metal:0.35}); texify(fq,MARBLE_TEX,Math.max(1,Math.round((fx1-fx0)/4)),Math.max(1,Math.round((fz1-fz0)/4)));
   }
   fr(x0,hx0,z0,z1); fr(hx1,x1,z0,z1); fr(hx0,hx1,z0,hz0); fr(hx0,hx1,hz1,z1);
 }
 function ceilRect(cx,cz,w,d,color){
-  plane(world,cx,4.02,cz,w,d,color||0x0d0d0f,{rx:90,rough:0.9,metal:0.05});
+  var cp=plane(world,cx,5.02,cz,w,d,color||0x0d0d0f,{rx:90,rough:0.9,metal:0.05});
+  cp.addEventListener('loaded',function(){ var m=cp.getObject3D('mesh'); if(m) m.name='ceiling'; });
 }
 function rug(cx,cz,w,d,color){
   plane(world,cx,0.045,cz,w,d,color||0x1c1607,{rx:-90,rough:0.95,metal:0});
@@ -218,16 +293,16 @@ ceilRect(0,-5,12,10);  ceilRect(12,-5,12,10);  ceilRect(-12,5,12,10);
 ceilRect(0,5,12,10);   ceilRect(12,5,12,10);   ceilRect(0,15,12,10);
 
 /* Room labels */
-label(world,-12,3.35,-15,'PRIMARY BEDROOM',8);
-label(world,0,3.35,-15,'AQUARIUM BATHROOM',8);
-label(world,12,3.35,-15,'GAME ROOM',8);
-label(world,-12,3.35,-5,'4D CINEMA',8,'#ffd95e',0);
-label(world,0,3.35,-5,'SIMULATION ROOM',7);
-label(world,12,3.35,-5,'INDOOR POOL GROTTO',8);
-label(world,-12,3.35,5,'KITCHEN',8);
-label(world,0,3.35,5,'LIVING ROOM',8);
-label(world,12,3.35,5,'DINING ROOM',8);
-label(world,0,3.35,14,'GRAND FOYER',8);
+label(world,-12,4.35,-15,'PRIMARY BEDROOM',8);
+label(world,0,4.35,-15,'AQUARIUM BATHROOM',8);
+label(world,12,4.35,-15,'GAME ROOM',8);
+label(world,-12,4.35,-5,'4D CINEMA',8,'#ffd95e',0);
+label(world,0,4.35,-5,'SIMULATION ROOM',7);
+label(world,12,4.35,-5,'INDOOR POOL GROTTO',8);
+label(world,-12,4.35,5,'KITCHEN',8);
+label(world,0,4.35,5,'LIVING ROOM',8);
+label(world,12,4.35,5,'DINING ROOM',8);
+label(world,0,4.35,14,'GRAND FOYER',8);
 
 /* ================= SCREEN WALLS ================= */
 var SCREEN_MODES=['gold','rain','stars','waves','off'];
@@ -304,16 +379,16 @@ function drawScreen(scr,t){
   }
   if(scr.tex) scr.tex.needsUpdate=true;
 }
-makeScreen(-3.5,2,10.14,0,5,2.4,'Grand Foyer');
-makeScreen(-5.84,2,5,90,6,2.4,'Living Room');
-makeScreen(-12,2,9.84,180,6,2.4,'Kitchen');
-makeScreen(17.84,2,5,-90,6,2.4,'Dining Room');
-makeScreen(-12,2,-19.84,0,6,2.4,'Primary Bedroom');
-makeScreen(-2.5,2,-19.84,0,5,2.4,'Aquarium Bathroom');
-makeScreen(12,2,-19.84,0,6,2.4,'Game Room');
-makeScreen(-12,2.1,-9.84,0,8.5,3,'4D Cinema');
-makeScreen(15,2,-0.14,180,5,2.4,'Pool Grotto');
-makeScreen(0,2,-9.84,0,6,2.4,'Secret Room');
+makeScreen(-3.5,2.5,10.14,0,5,2.4,'Grand Foyer');
+makeScreen(-5.84,2.5,5,90,6,2.4,'Living Room');
+makeScreen(-12,2.5,9.84,180,6,2.4,'Kitchen');
+makeScreen(17.84,2.5,5,-90,6,2.4,'Dining Room');
+makeScreen(-12,2.5,-19.84,0,6,2.4,'Primary Bedroom');
+makeScreen(-2.5,2.5,-19.84,0,5,2.4,'Aquarium Bathroom');
+makeScreen(12,2.5,-19.84,0,6,2.4,'Game Room');
+makeScreen(-12,2.6,-9.84,0,8.5,3,'4D Cinema');
+makeScreen(15,2.5,-0.14,180,5,2.4,'Pool Grotto');
+makeScreen(0,2.5,-9.84,0,6,2.4,'Secret Room');
 </script>
 
 <script>
@@ -336,16 +411,16 @@ addCollider(0,20,2.6,0.35);
 cyl(world,-0.08,1.5,19.9,0.05,0.05,0.9,GOLD_L,{emissive:GOLD_L,ei:0.9});
 cyl(world, 0.08,1.5,19.9,0.05,0.05,0.9,GOLD_L,{emissive:GOLD_L,ei:0.9});
 [-4,4].forEach(function(px){ [-12,-18].forEach(function(pz){
-  cyl(world,px,2,pz===-12?12:18,0.32,0.36,4,0x1b1b1b,{rough:0.5});
-  cyl(world,px,3.9,pz===-12?12:18,0.45,0.45,0.22,GOLD,{metal:0.9});
+  cyl(world,px,2.5,pz===-12?12:18,0.32,0.36,5,0x1b1b1b,{rough:0.5});
+  cyl(world,px,4.88,pz===-12?12:18,0.45,0.45,0.22,GOLD,{metal:0.9});
   cyl(world,px,0.12,pz===-12?12:18,0.45,0.45,0.24,GOLD,{metal:0.9});
 });});
 rug(0,15,7,6);
-cyl(world,0,3.85,15,0.03,0.03,0.4,GOLD,{});
-el('a-sphere',world,{position:'0 3.35 15',radius:0.34,material:'color:#ffd95e; emissive:#ffbf3f; emissiveIntensity:1.2'});
+cyl(world,0,4.82,15,0.03,0.03,0.4,GOLD,{});
+el('a-sphere',world,{position:'0 4.32 15',radius:0.34,material:'color:#ffd95e; emissive:#ffbf3f; emissiveIntensity:1.2'});
 for(var ci=0;ci<8;ci++){
   var ang=ci/8*6.283;
-  el('a-sphere',world,{position:(Math.cos(ang)*0.62)+' 3.05 '+(15+Math.sin(ang)*0.62),
+  el('a-sphere',world,{position:(Math.cos(ang)*0.62)+' 4.02 '+(15+Math.sin(ang)*0.62),
     radius:0.09,material:'color:#ffe9a8; emissive:#ffbf3f; emissiveIntensity:1'});
 }
 label(world,0,2.2,19.7,'DEEZY\u2019S MANSION',6,'#ffd95e',180);
@@ -508,16 +583,16 @@ plane(world,-16.45,2.4,-13,2.6,1.6,0x9fc4d8,{ry:90,rough:0.05,metal:0.9,opacity:
 addCollider(-17,-13,1.1,3.4);
 /* glass dome in the tall ceiling */
 (function(){
-  var dome=el('a-sphere',world,{position:'-12 4.1 -15',radius:4.6,
+  var dome=el('a-sphere',world,{position:'-12 5.1 -15',radius:4.6,
     geometry:'thetaLength:80',material:'color:#a8d4f0; transparent:true; opacity:0.22; side:double; roughness:0.05; metalness:0.1'});
   for(var r=0;r<3;r++){
-    el('a-torus',world,{position:'-12 '+(4.15+r*0.85)+' -15',radius:4.55-r*0.95,'tube':0.045,
+    el('a-torus',world,{position:'-12 '+(5.15+r*0.85)+' -15',radius:4.55-r*0.95,'tube':0.045,
       rotation:'90 0 0',material:'color:#c9a227; metalness:0.95; roughness:0.2'});
   }
-  el('a-sphere',world,{position:'-10 5.6 -17',radius:0.16,material:'color:#ffffff; emissive:#ffffff; emissiveIntensity:1.4'});
-  el('a-sphere',world,{position:'-14.5 6 -13',radius:0.12,material:'color:#ffe9a8; emissive:#ffffff; emissiveIntensity:1.2'});
-  el('a-sphere',world,{position:'-12 6.4 -15',radius:0.2,material:'color:#fff6d8; emissive:#ffe9a8; emissiveIntensity:1.3'});
-  label(world,-12,3.3,-11,'GLASS DOME',5,'#a8d4f0',180);
+  el('a-sphere',world,{position:'-10 6.6 -17',radius:0.16,material:'color:#ffffff; emissive:#ffffff; emissiveIntensity:1.4'});
+  el('a-sphere',world,{position:'-14.5 7 -13',radius:0.12,material:'color:#ffe9a8; emissive:#ffffff; emissiveIntensity:1.2'});
+  el('a-sphere',world,{position:'-12 7.4 -15',radius:0.2,material:'color:#fff6d8; emissive:#ffe9a8; emissiveIntensity:1.3'});
+  label(world,-12,4.3,-11,'GLASS DOME',5,'#a8d4f0',180);
 })();
 
 /* ================= AQUARIUM BATHROOM =================
@@ -760,7 +835,7 @@ label(world,-12,0.9,-0.6,'4D CINEMA — SEATS SHAKE (IN THE MOVIES)',6.5,'#ffd95
 (function(){
   var p=plane(world,4.4,2,10.16,4.6,2.3,0x0a0a0a,{opacity:0.92});
   label(world,4.4,2.75,10.2,'HOW TO PLAY',3.6,'#ffd95e',0);
-  label(world,4.4,2.25,10.2,'Left stick: walk   Right stick: turn',4.2,'#ffffff',0);
+  label(world,4.4,2.25,10.2,'Left stick: walk   Right stick: smooth turn',4.2,'#ffffff',0);
   label(world,4.4,1.85,10.2,'Point at gold + trigger: use it',4.2,'#ffffff',0);
   label(world,4.4,1.45,10.2,'Try the faucet, walls, bookshelf,',4.2,'#ffffff',0);
   label(world,4.4,1.1,10.2,'painting, counter, TV, waterfall',4.2,'#ffffff',0);
@@ -777,9 +852,9 @@ var greatHall, simCandles=[], simFigures=[];
   greatHall=el('a-entity',world,{visible:'false'});
   var g=greatHall;
   // starry ceiling
-  plane(g,0,3.96,-5,11.6,9.6,0x02030a,{rx:90});
+  plane(g,0,4.96,-5,11.6,9.6,0x02030a,{rx:90});
   for(var s=0;s<70;s++){
-    el('a-sphere',g,{position:(-5.4+ (s*37%108)/10)+' 3.9 '+(-9.4+(s*53%88)/10),
+    el('a-sphere',g,{position:(-5.4+ (s*37%108)/10)+' 4.9 '+(-9.4+(s*53%88)/10),
       radius:0.03+(s%3)*0.015,material:'color:#ffffff; emissive:#ffffff; emissiveIntensity:1.2'});
   }
   // two long house tables + benches
@@ -822,7 +897,7 @@ var greatHall, simCandles=[], simFigures=[];
   });
   holoFigure(g,-1.6,0,-9.9,0xc9a2ff,1.15);
   holoFigure(g,1.6,0,-9.9,0xc9a2ff,1.15);
-  label(g,0,3.4,-9.7,'THE GREAT HALL',7,'#c9a2ff',0);
+  label(g,0,4.2,-9.7,'THE GREAT HALL',7,'#c9a2ff',0);
   // the portal itself is the trigger (ring on the north wall + floating ring mid-room)
   var ring=el('a-torus',world,{position:'0 1.9 -4.2',radius:0.85,tube:0.06,
     material:'color:#c9a2ff; emissive:#7a3ae0; emissiveIntensity:1.1; metalness:0.4'});
@@ -881,6 +956,103 @@ var burnerKnob=el('a-sphere',world,{position:'-16.6 1.05 2.6',radius:0.07,
   material:'color:#ffd95e; emissive:#c9a227; emissiveIntensity:0.8; metalness:0.9'});
 makeInteractable(burnerKnob,'burner','Stove — burner on / off');
 animProps.burner={on:false,glow:burnerGlow};
+</script>
+
+<script>
+/* ================= V2 DRESSING - grander, closer to the videos ================= */
+(function(){
+  var sceneEl2=document.getElementById('scene');
+  // lintel panels above the two secret doors (fill the tall-wall gap)
+  box(world,0,4.2,0,2.6,1.6,0.36,0x141310,{rough:0.85,metal:0.1,tex:PANEL_TEX,txr:1,tyr:1});
+  box(world,-6,4.1,-5,0.36,1.8,2.4,0x141310,{rough:0.85,metal:0.1,tex:PANEL_TEX,txr:1,tyr:1});
+  // FOYER: gold chandelier ring + planters
+  el('a-torus',world,{position:'0 4.05 15',radius:1.05,tube:0.05,rotation:'90 0 0',material:'color:#c9a227; metalness:0.95; roughness:0.2; emissive:#c9a227; emissiveIntensity:0.35'});
+  [-4.6,4.6].forEach(function(px){
+    cyl(world,px,0.5,11,0.42,0.34,1,0x8a6d1f,{metal:0.85,rough:0.3});
+    el('a-sphere',world,{position:px+' 1.45 11',radius:0.55,material:'color:#1d3a17; roughness:0.95'});
+  });
+  // LIVING: gold floor lamps
+  [-4.6,4.6].forEach(function(px){
+    cyl(world,px,0.85,8.6,0.05,0.07,1.7,GOLD,{metal:0.9});
+    el('a-sphere',world,{position:px+' 1.85 8.6',radius:0.16,material:'color:#ffe9a8; emissive:#ffbf3f; emissiveIntensity:1.1'});
+    addCollider(px,8.6,0.3,0.3);
+  });
+  // KITCHEN: three gold pendants over the island + a fruit bowl
+  [-14.2,-13,-11.8].forEach(function(px){
+    cyl(world,px,4.1,6.8,0.02,0.02,1.8,0x111111,{});
+    el('a-cone',world,{position:px+' 3.1 6.8',radius:0.26,height:0.3,material:'color:#c9a227; metalness:0.9; roughness:0.25; emissive:#c9a227; emissiveIntensity:0.25'});
+    el('a-sphere',world,{position:px+' 2.9 6.8',radius:0.07,material:'color:#ffe9a8; emissive:#ffbf3f; emissiveIntensity:1.2'});
+  });
+  cyl(world,-13,1.28,6.8,0.3,0.18,0.14,0x8a6d1f,{metal:0.85});
+  [[-13.12,0xffa726],[-12.9,0xd83a2e],[-13,0xffd95e]].forEach(function(fr){
+    el('a-sphere',world,{position:fr[0]+' 1.42 6.8',radius:0.075,material:'color:#'+fr[1].toString(16).padStart(6,'0')+'; roughness:0.5'});
+  });
+  // DINING: chandelier over the table
+  cyl(world,12,4.7,5,0.03,0.03,0.6,GOLD,{});
+  el('a-torus',world,{position:'12 4.35 5',radius:0.85,tube:0.045,rotation:'90 0 0',material:'color:#c9a227; metalness:0.95; roughness:0.2; emissive:#c9a227; emissiveIntensity:0.3'});
+  for(var dc=0;dc<6;dc++){ var da=dc/6*6.283;
+    el('a-sphere',world,{position:(12+Math.cos(da)*0.85)+' 4.5 '+(5+Math.sin(da)*0.85),radius:0.06,material:'color:#ffe9a8; emissive:#ffbf3f; emissiveIntensity:1.2'});
+  }
+  // BEDROOM: bench at the foot of the bed + gold vases
+  box(world,-12,0.45,-15.6,3.4,0.5,0.7,0x20180c,{rough:0.6,tex:WOOD_TEX,txr:2,tyr:1});
+  addCollider(-12,-15.6,3.4,0.7);
+  [-16.2,-7.8].forEach(function(px){
+    cyl(world,px,0.6,-11.6,0.16,0.26,1.2,GOLD,{metal:0.9,rough:0.25});
+  });
+  // BATHROOM: gold towel rail + towels by the vanity
+  box(world,-4.2,1.7,-19.75,0.9,0.05,0.05,GOLD,{metal:0.95});
+  box(world,-4.45,1.35,-19.72,0.34,0.65,0.04,0xf2ead8,{rough:0.95});
+  box(world,-3.95,1.35,-19.72,0.34,0.65,0.04,0xf2ead8,{rough:0.95});
+  // GAME ROOM: gold light strips + a low couch
+  box(world,9,3.9,-0.35,4.6,0.07,0.07,GOLD_L,{emissive:GOLD_L,ei:0.8});
+  box(world,15,3.9,-0.35,4.6,0.07,0.07,GOLD_L,{emissive:GOLD_L,ei:0.8});
+  box(world,12,0.45,-2.2,4.2,0.5,1,0x14141f,{rough:0.9});
+  box(world,12,0.95,-1.85,4.2,1.1,0.3,0x1d1d2b,{rough:0.9});
+  addCollider(12,-2.2,4.4,1.2);
+  // CINEMA: gold step lights along the seat rows
+  for(var sr=0;sr<3;sr++){
+    box(world,-16.9,0.12,-2.6+sr*1.5,0.5,0.05,0.08,GOLD_L,{emissive:GOLD_L,ei:0.7});
+    box(world,-7.1,0.12,-2.6+sr*1.5,0.5,0.05,0.08,GOLD_L,{emissive:GOLD_L,ei:0.7});
+  }
+  // POOL GROTTO: stone backdrop behind the waterfall + palms + lanterns
+  box(world,12,2.2,-9.75,9.5,5,0.5,0x2a2a2e,{rough:0.95,tex:STONE_TEX,txr:3,tyr:2});
+  [6.7,17.3].forEach(function(px){
+    cyl(world,px,0.9,-8.8,0.09,0.13,1.8,0x4a3418,{rough:0.9});
+    for(var lf=0;lf<5;lf++){ var la=lf/5*6.283;
+      var leaf=box(world,px+Math.cos(la)*0.55,2,-8.8+Math.sin(la)*0.55,1.1,0.04,0.3,0x1d4a17,{rough:0.9});
+      leaf.setAttribute('rotation','0 '+(-la*57.3)+' -18');
+    }
+    addCollider(px,-8.8,0.4,0.4);
+  });
+  [8.2,15.8].forEach(function(px){
+    cyl(world,px,0.6,-1.9,0.04,0.05,1.2,0x111111,{});
+    el('a-sphere',world,{position:px+' 1.35 -1.9',radius:0.11,material:'color:#ffe9a8; emissive:#ffbf3f; emissiveIntensity:1.1'});
+  });
+  // GREAT HALL (inside the portal): runner rug + banners
+  if(typeof greatHall!=='undefined'&&greatHall){
+    plane(greatHall,0,0.06,-5,2.6,8.6,0x4a0f14,{rx:-90,rough:0.95});
+    [-5.6,5.6].forEach(function(bx){
+      plane(greatHall,bx,2.6,-5,1.1,2.6,0x6e1420,{ry:bx<0?90:-90,rough:0.9});
+      box(greatHall,bx,3.95,-5,0.06,0.12,1.3,GOLD,{metal:0.9});
+    });
+  }
+  // renderer polish: ACES tone mapping + soft shadows for grounding
+  sceneEl2.addEventListener('loaded',function(){
+    try{
+      var r=sceneEl2.renderer;
+      if(r){ r.toneMapping=THREE.ACESFilmicToneMapping; r.toneMappingExposure=1.12;
+             r.shadowMap.enabled=true; r.shadowMap.type=THREE.PCFSoftShadowMap; }
+      world.object3D.traverse(function(n){
+        if(n.isMesh){
+          n.receiveShadow=true;
+          var m=n.material;
+          if(m&&!m.transparent&&n.name!=='ceiling') n.castShadow=true;
+          if(m) m.needsUpdate=true;
+        }
+      });
+    }catch(e){ /* shadows are polish only - never break the world */ }
+  });
+})();
 </script>
 
 <script>
@@ -1070,12 +1242,32 @@ function doAction(action,key,elm){
   }
 }
 
-/* ================= LOCOMOTION + COLLISION ================= */
+/* ================= LOCOMOTION + COLLISION (v2) =================
+   WHY v1 FAILED IN THE HEADSET (Deezy: "I couldn't move"):
+   1) v1 read the sticks from navigator.getGamepads(). Inside an
+      immersive WebXR session the Quest Touch controllers are NOT
+      exposed there - they only exist as session.inputSources, each
+      with .gamepad (thumbstick = axes[2]/axes[3]) and .handedness.
+      So in VR the old loop saw zero controllers, forever.
+   2) v1 ran on window.requestAnimationFrame, which the browser
+      suspends while the headset is presenting. The frame loop that
+      applied movement stalled exactly when he put the headset on.
+   v2: input comes from the XR session input sources (getGamepads
+   kept only as a no-XR fallback), and ALL per-frame work runs in an
+   A-Frame component tick(), driven by the renderer's XR-aware
+   animation loop, so it runs at full rate inside the headset.
+   Turning is SMOOTH and continuous (Deezy: "smooth, not the snap"),
+   movement glides with eased velocity, and the desktop 1.6 m camera
+   offset is zeroed in VR (local-floor tracking already carries his
+   real height) and restored on exit.                              */
 addCollider(-9,2.4,2.6,3.2,'stairs-look-only');   // look down the stairs, don't fall in
 var rig=document.getElementById('rig'), cam=document.getElementById('cam');
-var keys={}, stepAcc=0, snapArmed=true;
+var sceneEl=document.getElementById('scene');
+var keys={}, stepAcc=0, velX=0, velZ=0;
 document.addEventListener('keydown',function(e){ keys[e.code]=true; });
 document.addEventListener('keyup',function(e){ keys[e.code]=false; });
+sceneEl.addEventListener('enter-vr',function(){ cam.setAttribute('position','0 0 0'); });
+sceneEl.addEventListener('exit-vr',function(){ cam.setAttribute('position','0 1.6 0'); });
 function canStand(x,z){
   if(x<-17.4||x>17.4||z<-19.4||z>19.4) return false;
   if(z>10.4&&(x<-5.4||x>5.4)) return false;      // south strip is foyer only
@@ -1085,71 +1277,84 @@ function canStand(x,z){
   }
   return true;
 }
-function moveRig(dx,dz,dt){
-  var sp=(keys.ShiftLeft||keys.ShiftRight)?4.2:2.3;
-  var nx=rig.object3D.position.x+dx*sp*dt, nz=rig.object3D.position.z+dz*sp*dt;
-  var ox=rig.object3D.position.x, oz=rig.object3D.position.z;
-  if(canStand(nx,oz)) rig.object3D.position.x=nx;
-  if(canStand(rig.object3D.position.x,nz)) rig.object3D.position.z=nz;
-  var moved=Math.hypot(rig.object3D.position.x-ox,rig.object3D.position.z-oz);
-  stepAcc+=moved;
-  if(stepAcc>1.7){ stepAcc=0; stepSnd(); }
+function dzAxis(v){ var a=Math.abs(v||0); if(a<0.18) return 0; return Math.sign(v)*Math.min(1,(a-0.18)/0.82); }
+function readSticks(){
+  var out={x:0,y:0,turn:0}, sawXR=false;
+  function eat(gp,hand){
+    if(!gp||!gp.axes||!gp.axes.length) return;
+    var ax=0, ay=0;
+    if(gp.axes.length>=4){ ax=gp.axes[2]||0; ay=gp.axes[3]||0;
+      if(!ax&&!ay&&(gp.axes[0]||gp.axes[1])){ ax=gp.axes[0]||0; ay=gp.axes[1]||0; } }
+    else { ax=gp.axes[0]||0; ay=gp.axes[1]||0; }
+    if(hand==='left'){ out.x+=ax; out.y+=-ay; }
+    else if(hand==='right'){ out.turn+=ax; }
+  }
+  var session=sceneEl.xrSession||null;
+  if(!session&&sceneEl.renderer&&sceneEl.renderer.xr&&sceneEl.renderer.xr.getSession){
+    try{ session=sceneEl.renderer.xr.getSession(); }catch(e){ session=null; }
+  }
+  if(session&&session.inputSources){
+    for(var i=0;i<session.inputSources.length;i++){
+      var srcS=session.inputSources[i];
+      if(srcS&&srcS.gamepad){ eat(srcS.gamepad,srcS.handedness); sawXR=true; }
+    }
+  }
+  if(!sawXR&&navigator.getGamepads){
+    var gps=navigator.getGamepads();
+    for(var j=0;j<gps.length;j++){
+      var gp=gps[j]; if(!gp) continue;
+      eat(gp, gp.hand||(j===0?'left':(j===1?'right':null)));
+    }
+  }
+  return out;
 }
 function locomotion(dt){
-  var scene=document.getElementById('scene');
   var fwd=new THREE.Vector3();
-  if(scene.is('vr-mode')){
-    cam.object3D.getWorldDirection(fwd); fwd.y=0;
-    if(fwd.lengthSq()<0.001) fwd.set(0,0,-1); fwd.normalize();
-  }else{
-    var yaw=rig.object3D.rotation.y+cam.object3D.rotation.y;
-    fwd.set(-Math.sin(yaw),0,-Math.cos(yaw));
+  cam.object3D.getWorldDirection(fwd); fwd.y=0;
+  if(fwd.lengthSq()<0.001) fwd.set(0,0,-1);
+  fwd.normalize();
+  var right=new THREE.Vector3().crossVectors(fwd,new THREE.Vector3(0,1,0));
+  var s=readSticks();
+  var f=dzAxis(s.y), r=dzAxis(s.x), turn=dzAxis(s.turn);
+  if(keys.KeyW||keys.ArrowUp) f+=1;
+  if(keys.KeyS||keys.ArrowDown) f-=1;
+  if(keys.KeyA||keys.ArrowLeft) r-=1;
+  if(keys.KeyD||keys.ArrowRight) r+=1;
+  if(keys.KeyQ) turn-=1;
+  if(keys.KeyE) turn+=1;
+  if(turn) rig.object3D.rotation.y-=turn*1.9*dt;   // smooth continuous turn - no snap
+  var len=Math.hypot(f,r); if(len>1){ f/=len; r/=len; }
+  var speed=(keys.ShiftLeft||keys.ShiftRight)?4.4:2.6;
+  var tx=(fwd.x*f+right.x*r)*speed, tz=(fwd.z*f+right.z*r)*speed;
+  var k=1-Math.exp(-dt*7);                          // glide: ease toward target velocity
+  velX+=(tx-velX)*k; velZ+=(tz-velZ)*k;
+  if(Math.abs(velX)>0.004||Math.abs(velZ)>0.004){
+    var ox=rig.object3D.position.x, oz=rig.object3D.position.z;
+    var nx=ox+velX*dt, nz=oz+velZ*dt;
+    if(canStand(nx,oz)) rig.object3D.position.x=nx; else velX=0;
+    if(canStand(rig.object3D.position.x,nz)) rig.object3D.position.z=nz; else velZ=0;
+    stepAcc+=Math.hypot(rig.object3D.position.x-ox,rig.object3D.position.z-oz);
+    if(stepAcc>1.7){ stepAcc=0; stepSnd(); }
   }
-  var right=new THREE.Vector3(fwd.z,0,-fwd.x).multiplyScalar(-1);
-  var mx=0,mz=0;
-  // desktop keys
-  if(keys.KeyW||keys.ArrowUp){ mx+=fwd.x; mz+=fwd.z; }
-  if(keys.KeyS||keys.ArrowDown){ mx-=fwd.x; mz-=fwd.z; }
-  if(keys.KeyA||keys.ArrowLeft){ mx-=right.x; mz-=right.z; }
-  if(keys.KeyD||keys.ArrowRight){ mx+=right.x; mz+=right.z; }
-  if(keys.KeyQ) rig.object3D.rotation.y+=1.6*dt;
-  if(keys.KeyE) rig.object3D.rotation.y-=1.6*dt;
-  // XR gamepads: left stick move, right stick snap turn
-  var gps=navigator.getGamepads?navigator.getGamepads():[];
-  for(var i=0;i<gps.length;i++){
-    var gp=gps[i]; if(!gp||!gp.axes||gp.axes.length<4) continue;
-    var ax=gp.axes[2], ay=gp.axes[3];
-    if(gp.hand==='left'||(!gp.hand&&i===0)){
-      if(Math.abs(ax)>0.15||Math.abs(ay)>0.15){ mx+=fwd.x*-ay+right.x*ax; mz+=fwd.z*-ay+right.z*ax; }
-    }
-    if(gp.hand==='right'||(!gp.hand&&i===1)){
-      if(snapArmed&&Math.abs(ax)>0.7){ rig.object3D.rotation.y-=Math.sign(ax)*Math.PI/6; snapArmed=false; }
-      if(Math.abs(ax)<0.3) snapArmed=true;
-    }
-  }
-  var l=Math.hypot(mx,mz);
-  if(l>0.01) moveRig(mx/l,mz/l,dt);
   // wading dips: pool basin / jacuzzi
   var px=rig.object3D.position.x, pz=rig.object3D.position.z, ty=0;
   if(px>8.2&&px<15.8&&pz>-7.8&&pz<-2.2) ty=-0.55;
   else if(px>-4.9&&px<-1.5&&pz>-17.3&&pz<-14.7) ty=-0.45;
   rig.object3D.position.y+=(ty-rig.object3D.position.y)*Math.min(1,dt*5);
 }
-
-/* ================= ANIMATION LOOP ================= */
-var lastT=performance.now();
-function animate(now){
-  requestAnimationFrame(animate);
-  var dt=Math.min(0.05,(now-lastT)/1000); lastT=now;
-  var t=now/1000;
+/* ================= PER-FRAME WORK (A-Frame tick - runs inside VR) ================= */
+var scrAcc=0, scrIdx=0;
+function frameStep(time,timeDelta){
+  var dt=Math.min(0.05,(timeDelta||16.7)/1000);
+  var t=time/1000;
   locomotion(dt);
-  function lerpPos(obj,axis,target,speed){
-    var cur=obj.object3D.position[axis], d=target-cur, step=speed*dt;
+  function lerpPos(obj,axis,target,spd){
+    var cur=obj.object3D.position[axis], d=target-cur, step=spd*dt;
     obj.object3D.position[axis]=Math.abs(d)<step?target:cur+Math.sign(d)*step;
   }
-  function lerpRot(obj,targetDeg,speed){
+  function lerpRot(obj,targetDeg,spd){
     var cur=obj.object3D.rotation.y, tgt=targetDeg*Math.PI/180, d=tgt-cur;
-    obj.object3D.rotation.y=Math.abs(d)<speed*dt?tgt:cur+Math.sign(d)*speed*dt;
+    obj.object3D.rotation.y=Math.abs(d)<spd*dt?tgt:cur+Math.sign(d)*spd*dt;
   }
   lerpPos(animProps.tv.group,'y',animProps.tv.target,1.1);
   lerpPos(animProps.table.group,'y',animProps.table.target,0.9);
@@ -1157,7 +1362,7 @@ function animate(now){
   lerpRot(animProps.bookshelf.pivot,animProps.bookshelf.target,1.9);
   lerpRot(animProps.painting.pivot,animProps.painting.target,1.9);
   if(animProps.portalSpin) animProps.portalSpin.object3D.rotation.y+=dt*0.5;
-  if(holoSpinner) holoSpinner.object3D.rotation.y+=dt*0.8;
+  if(typeof holoSpinner!=='undefined'&&holoSpinner) holoSpinner.object3D.rotation.y+=dt*0.8;
   if(animProps.lazyRiver) animProps.lazyRiver.object3D.rotation.y+=dt*0.12;
   // fish
   for(var i=0;i<fishes.length;i++){
@@ -1190,18 +1395,24 @@ function animate(now){
       });
     });
   }
-}
-requestAnimationFrame(animate);
-/* screen walls redraw, staggered */
-var scrIdx=0;
-setInterval(function(){
-  var now=performance.now();
-  for(var k=0;k<3;k++){
-    var scr=screens[(scrIdx+k)%screens.length];
-    if(scr) drawScreen(scr,now);
+  // screen walls redraw, staggered
+  scrAcc+=dt;
+  if(scrAcc>0.18){
+    scrAcc=0;
+    for(var k2=0;k2<3;k2++){
+      var scr=screens[(scrIdx+k2)%screens.length];
+      if(scr) drawScreen(scr,performance.now());
+    }
+    scrIdx=(scrIdx+3)%screens.length;
   }
-  scrIdx=(scrIdx+3)%screens.length;
-},180);
+}
+if(window.AFRAME){
+  AFRAME.registerComponent('mansion-drive',{ tick:function(time,timeDelta){ frameStep(time,timeDelta); } });
+  sceneEl.setAttribute('mansion-drive','');
+}else{
+  var _lt=performance.now();
+  (function _loop(now){ requestAnimationFrame(_loop); frameStep(now,now-_lt); _lt=now; })(performance.now());
+}
 screens.forEach(function(s){ drawScreen(s,performance.now()); });
 setTimeout(function(){ toast('Welcome home, Deezy. Point at gold things and pull the trigger.'); },1200);
 </script>
