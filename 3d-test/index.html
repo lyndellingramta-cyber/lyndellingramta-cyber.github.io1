@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Deezy's Mansion — Living Room REALISM TEST</title>
+<script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+<meta name="mansion-version" content="3d-test-livingroom-2026-11-15">
+<style>
+  html,body{margin:0;padding:0;background:#000;font-family:Arial,Helvetica,sans-serif;}
+  #hud{position:fixed;top:10px;left:10px;z-index:10;color:#f5d67b;background:rgba(0,0,0,.72);
+       border:1px solid #c9a227;border-radius:10px;padding:10px 12px;max-width:340px;font-size:13px;line-height:1.45;}
+  #hud h1{font-size:15px;margin:0 0 6px 0;color:#ffd95e;}
+  #hud b{color:#ffe9a8;}
+  #hud a{color:#ffd95e;}
+  #loadmsg{margin-top:6px;color:#9fd0ff;font-size:12px;}
+  #toast{position:fixed;left:50%;bottom:88px;transform:translateX(-50%);z-index:10;color:#111;
+         background:#ffd95e;border-radius:20px;padding:8px 18px;font-size:14px;font-weight:bold;
+         opacity:0;transition:opacity .25s;pointer-events:none;max-width:86vw;text-align:center;}
+  #enterVrBtn{position:fixed;right:14px;bottom:14px;z-index:11;background:#c9a227;color:#000;border:none;
+         border-radius:10px;padding:14px 22px;font-size:16px;font-weight:bold;cursor:pointer;}
+  #soundBtn{position:fixed;left:14px;bottom:14px;z-index:11;background:#222;color:#ffd95e;border:1px solid #c9a227;
+         border-radius:10px;padding:12px 16px;font-size:14px;cursor:pointer;}
+  .a-enter-vr{bottom:70px !important;}
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <h1>LIVING ROOM — REALISM TEST</h1>
+  <div><b>Move:</b> left thumbstick &nbsp; <b>Turn:</b> right thumbstick - smooth, no snap</div>
+  <div><b>Same movement as the /3d/ world</b> — only the room changed: real photo
+  textures (black marble, paneled wood, gold metal), real HDRI light, real 3D
+  sofa / coffee table / ceiling lamp models, ACES tone mapping + shadows.</div>
+  <div><b>Interact:</b> point at a glowing gold object + pull <b>trigger</b></div>
+  <div><b>Desktop:</b> W A S D to walk, mouse to look, click objects</div>
+  <div style="margin-top:6px"><b>Try:</b> floor-rising TV &bull; bookshelf secret door &bull;
+  wall screen (west wall) &bull; light switch (east wall)</div>
+  <div style="margin-top:6px">Compare with the full world: <a href="../3d/">/3d/</a></div>
+  <div id="loadmsg">Loading real textures…</div>
+</div>
+<div id="toast"></div>
+<button id="soundBtn">&#128266; Sound: tap to enable</button>
+<button id="enterVrBtn">ENTER VR</button>
+
+<a-scene id="scene" renderer="antialias:true; colorManagement:true" vr-mode-ui="enabled:true" webxr="referenceSpaceType: local-floor; optionalFeatures: local-floor"
+         background="color:#030303" fog="type:linear; color:#030303; near:30; far:70">
+  <a-entity id="rig" position="0 0 9">
+    <a-entity id="cam" camera look-controls="pointerLockEnabled:true" position="0 1.6 0">
+      <a-entity id="reticle" position="0 0 -1.2"
+                geometry="primitive:ring; radiusInner:0.008; radiusOuter:0.014"
+                material="color:#ffd95e; shader:flat; transparent:true; opacity:0.9"
+                visible="false"></a-entity>
+    </a-entity>
+    <a-entity id="handL" laser-controls="hand:left"
+              raycaster="objects:.interactable; far:40; showLine:true"
+              line="color:#ffd95e; opacity:0.55"></a-entity>
+    <a-entity id="handR" laser-controls="hand:right"
+              raycaster="objects:.interactable; far:40; showLine:true"
+              line="color:#ffd95e; opacity:0.55"></a-entity>
+  </a-entity>
+  <a-entity cursor="rayOrigin:mouse; fuse:false" raycaster="objects:.interactable; far:60"></a-entity>
+
+  <a-light type="ambient" color="#8a7a4a" intensity="0.5"></a-light>
+  <a-light type="hemisphere" color="#ffe9a8" groundColor="#1a1405" intensity="0.4"></a-light>
+  <a-light type="point" color="#ffd95e" intensity="1.3" distance="24" position="0 4.3 5"></a-light>
+  <a-light type="point" color="#ffca7a" intensity="0.85" distance="7" position="0 2.4 -1.4"></a-light>
+
+  <a-entity id="world"></a-entity>
+</a-scene>
+
+<script>
+'use strict';
+/* ============================================================
+   LIVING ROOM — REALISM TEST (A-Frame / WebXR)
+   Same proven movement rig as the /3d/ world. What changed:
+   real photographic PBR textures (Poly Haven + ambientCG, CC0),
+   a real HDRI for image-based lighting, real glTF furniture
+   models, ACES tone mapping, one shadow-casting key light.
+   Room coordinates match the /3d/ living room exactly:
+   x -6..6, z 0..10, ceiling 5 m, TV slot (0,3), sofa z 7.6,
+   bookshelf secret door on the z=0 wall.
+   ============================================================ */
+var GOLD=0xc9a227, GOLD_L=0xffd95e, BLACK=0x0a0a0a, WALLC=0x141310;
+var world=document.getElementById('world');
+var colliders=[];           // {minX,maxX,minZ,maxZ, id}
+var interactables=[];       // entities with actions
+var screens=[];             // screen-wall objects
+var animProps={};           // animated props state
+var spotLight=null;         // raw THREE key light (shadows), set on load
+
+function el(tag,parent,attrs){
+  var e=document.createElement(tag);
+  for(var k in attrs) e.setAttribute(k,attrs[k]);
+  (parent||world).appendChild(e); return e;
+}
+function box(parent,x,y,z,w,h,d,color,opts){
+  opts=opts||{};
+  var e=el('a-box',parent,{position:x+' '+y+' '+z,width:w,height:h,depth:d,
+    material:'color:#'+color.toString(16).padStart(6,'0')+'; roughness:'+(opts.rough!==undefined?opts.rough:0.65)+
+             '; metalness:'+(opts.metal!==undefined?opts.metal:0.25)+
+             (opts.opacity!==undefined?'; transparent:true; opacity:'+opts.opacity:'')+
+             (opts.emissive?'; emissive:#'+opts.emissive.toString(16).padStart(6,'0')+'; emissiveIntensity:'+(opts.ei||0.6):'')});
+  return e;
+}
+function cyl(parent,x,y,z,rT,rB,h,color,opts){
+  opts=opts||{};
+  var e=el('a-cylinder',parent,{position:x+' '+y+' '+z,'radius-top':rT,'radius-bottom':rB,height:h,
+    'open-ended':!!opts.open,material:'color:#'+color.toString(16).padStart(6,'0')+
+    '; roughness:'+(opts.rough!==undefined?opts.rough:0.4)+'; metalness:'+(opts.metal!==undefined?opts.metal:0.3)+
+    (opts.opacity!==undefined?'; transparent:true; opacity:'+opts.opacity+'; side:double':'')+
+    (opts.emissive?'; emissive:#'+opts.emissive.toString(16).padStart(6,'0')+'; emissiveIntensity:'+(opts.ei||0.6):'')});
+  return e;
+}
+function plane(parent,x,y,z,w,h,color,opts){
+  opts=opts||{};
+  var e=el('a-plane',parent,{position:x+' '+y+' '+z,width:w,height:h,
+    rotation:(opts.rx||0)+' '+(opts.ry||0)+' '+(opts.rz||0),
+    material:'color:#'+color.toString(16).padStart(6,'0')+'; roughness:'+(opts.rough!==undefined?opts.rough:0.7)+
+             '; metalness:'+(opts.metal!==undefined?opts.metal:0.15)+'; side:double'+
+             (opts.opacity!==undefined?'; transparent:true; opacity:'+opts.opacity:'')+
+             (opts.emissive?'; emissive:#'+opts.emissive.toString(16).padStart(6,'0')+'; emissiveIntensity:'+(opts.ei||0.5):'')});
+  return e;
+}
+function label(parent,x,y,z,text,scale,color,ry){
+  var e=el('a-text',parent,{position:x+' '+y+' '+z,value:text,align:'center',
+    color:color||'#ffd95e',width:scale||7,rotation:'0 '+(ry||0)+' 0','font':'roboto'});
+  return e;
+}
+function maxAniso(){
+  try{ var r=document.getElementById('scene').renderer;
+       return r?Math.min(8,r.capabilities.getMaxAnisotropy()):4; }catch(e){ return 4; }
+}
+function addCollider(x,z,w,d,id){
+  var c={minX:x-w/2,maxX:x+w/2,minZ:z-d/2,maxZ:z+d/2,id:id||null};
+  colliders.push(c); return c;
+}
+function removeCollider(c){
+  var i=colliders.indexOf(c); if(i>=0) colliders.splice(i,1);
+}
+/* Swap an A-Frame entity's flat material for a real PBR material
+   once its mesh exists (same 'loaded' pattern as the old texify). */
+function applyPBR(entity,mat){
+  entity.addEventListener('loaded',function(){
+    var mesh=entity.getObject3D&&entity.getObject3D('mesh'); if(!mesh) return;
+    mesh.material=mat; mesh.castShadow=true; mesh.receiveShadow=true;
+  });
+}
+
+/* ================= REAL PBR TEXTURES (CC0) =================
+   Floor : ambientCG Marble006 — real black marble, grey/white
+           veining (2K maps from the ambientCG CDN).
+   Walls : Poly Haven dark_paneled_wood (1K) tinted dark.
+   Gold  : Poly Haven metal_plate (1K) tinted gold, metalness 1.
+   Velvet: Poly Haven velour_velvet (1K) tinted charcoal.
+   Every load is non-fatal: a failed map just leaves that slot
+   empty and the material still renders.                     */
+var loadmsgEl=document.getElementById('loadmsg');
+function setLoadMsg(t){ if(loadmsgEl) loadmsgEl.textContent=t; }
+window.__setLoadMsg=setLoadMsg;
+var texMgr=new THREE.LoadingManager();
+texMgr.onProgress=function(u,loaded,total){ setLoadMsg('Loading real textures… '+loaded+' / '+total); };
+texMgr.onLoad=function(){ setLoadMsg('Textures ready — loading furniture models + HDRI light…'); };
+texMgr.onError=function(u){ setLoadMsg('A texture failed to load ('+u.split('/').pop()+') — room still works.'); };
+var texLoader=new THREE.TextureLoader(texMgr);
+function loadTex(url,srgb,rx,ry){
+  var t=texLoader.load(url);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping;
+  if(rx||ry) t.repeat.set(rx||1,ry||1);
+  if(srgb) t.colorSpace=THREE.SRGBColorSpace;
+  t.anisotropy=8;
+  return t;
+}
+var PH='https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/';
+var ACG='https://f003.backblazeb2.com/file/ambientCG-Web/media/surface-preview/Marble006/';
+
+/* --- black marble floor --- */
+var marbleMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:1.0,metalness:0.05,envMapIntensity:1.05});
+marbleMat.userData.keepEnv=true;
+marbleMat.map=loadTex(ACG+'Marble006_SQ_Color.jpg',true,3,2.5);
+marbleMat.roughnessMap=loadTex(ACG+'Marble006_SQ_Roughness.jpg',false,3,2.5);
+marbleMat.normalMap=loadTex(ACG+'Marble006_SQ_NormalDX.jpg',false,3,2.5);
+marbleMat.normalScale=new THREE.Vector2(1,-1);   // DX map -> flip green for Three.js (GL)
+
+/* --- dark paneled walls (cloned per wall for repeat) --- */
+function panelMat(rx,ry,tint){
+  var m=new THREE.MeshStandardMaterial({color:tint||0x8f8578,roughness:1.0,metalness:0.05,envMapIntensity:0.65});
+  m.userData.keepEnv=true;
+  m.map=loadTex(PH+'dark_paneled_wood/dark_paneled_wood_diff_1k.jpg',true,rx,ry);
+  m.normalMap=loadTex(PH+'dark_paneled_wood/dark_paneled_wood_nor_gl_1k.jpg',false,rx,ry);
+  m.roughnessMap=loadTex(PH+'dark_paneled_wood/dark_paneled_wood_rough_1k.jpg',false,rx,ry);
+  m.aoMap=loadTex(PH+'dark_paneled_wood/dark_paneled_wood_ao_1k.jpg',false,rx,ry);
+  m.aoMap.channel=0;
+  return m;
+}
+/* --- gold metal (metal_plate tinted gold) --- */
+function goldMetalMat(){
+  var m=new THREE.MeshStandardMaterial({color:0xd9ab4a,roughness:1.0,metalness:1.0,envMapIntensity:1.3});
+  m.userData.keepEnv=true;
+  m.map=loadTex(PH+'metal_plate/metal_plate_diff_1k.jpg',true,1,1);
+  m.normalMap=loadTex(PH+'metal_plate/metal_plate_nor_gl_1k.jpg',false,1,1);
+  m.normalScale=new THREE.Vector2(0.35,0.35);
+  m.roughnessMap=loadTex(PH+'metal_plate/metal_plate_rough_1k.jpg',false,1,1);
+  return m;
+}
+var goldMat=goldMetalMat();
+/* --- charcoal velvet (rug + built armchairs) --- */
+var velvetMat=new THREE.MeshPhysicalMaterial({color:0x35353d,roughness:1.0,metalness:0,
+  sheen:0.6,sheenRoughness:0.55,sheenColor:new THREE.Color(0x8a7a4a),envMapIntensity:0.5});
+velvetMat.userData.keepEnv=true;
+velvetMat.map=loadTex(PH+'velour_velvet/velour_velvet_diff_1k.jpg',true,2,2);
+velvetMat.roughnessMap=loadTex(PH+'velour_velvet/velour_velvet_rough_1k.jpg',false,2,2);
+velvetMat.normalMap=loadTex(PH+'velour_velvet/velour_velvet_nor_gl_1k.jpg',false,2,2);
+/* --- dark glass (door slab, TV inset) --- */
+var darkGlassMat=new THREE.MeshStandardMaterial({color:0x0a0c10,roughness:0.15,metalness:0.4,envMapIntensity:1.2});
+darkGlassMat.userData.keepEnv=true;
+
+/* raw THREE mesh helper for the PBR shell */
+function mesh(geo,mat,x,y,z,rx,ry,rz,parentObj){
+  var m=new THREE.Mesh(geo,mat);
+  m.position.set(x||0,y||0,z||0);
+  if(rx||ry||rz) m.rotation.set(rx||0,ry||0,rz||0);
+  m.castShadow=true; m.receiveShadow=true;
+  (parentObj||world.object3D).add(m);
+  return m;
+}
+function gbox(x,y,z,w,h,d,mat,ry){
+  return mesh(new THREE.BoxGeometry(w,h,d),mat||goldMat,x,y,z,0,ry||0,0);
+}
+/* soft contact-shadow blob (fake AO under furniture) */
+var shadowTex=(function(){
+  var c=document.createElement('canvas'); c.width=c.height=256;
+  var g=c.getContext('2d');
+  var rg=g.createRadialGradient(128,128,10,128,128,126);
+  rg.addColorStop(0,'rgba(0,0,0,0.55)'); rg.addColorStop(1,'rgba(0,0,0,0)');
+  g.fillStyle=rg; g.fillRect(0,0,256,256);
+  var t=new THREE.CanvasTexture(c); return t;
+})();
+function contactShadow(x,z,w,d,op){
+  var m=new THREE.Mesh(new THREE.PlaneGeometry(w,d),
+    new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,opacity:op||0.85,depthWrite:false}));
+  m.rotation.x=-Math.PI/2; m.position.set(x,0.035,z);
+  m.renderOrder=1;
+  world.object3D.add(m); return m;
+}
+
+/* ================= ROOM SHELL ================= */
+/* floor — one 12x10 plane of real black marble */
+mesh(new THREE.PlaneGeometry(12,10),marbleMat,0,0.02,5,-Math.PI/2,0,0).castShadow=false;
+/* ceiling — dark panels + gold medallion ring under the lamp */
+mesh(new THREE.PlaneGeometry(12,10),panelMat(5,4,0x4a443c),0,5,5,Math.PI/2,0,0).castShadow=false;
+el('a-torus',world,{position:'0 4.94 5',radius:0.85,tube:0.045,rotation:'90 0 0',
+  material:'color:#c9a227; metalness:0.95; roughness:0.2; emissive:#c9a227; emissiveIntensity:0.3'});
+
+/* walls — dark paneled wood, gold crown + baseboard trim.
+   North wall (z=0) leaves the 2.4 m bookshelf gap at x -1.2..1.2. */
+mesh(new THREE.PlaneGeometry(4.8,5),panelMat(2,2),-3.6,2.5,0);
+mesh(new THREE.PlaneGeometry(4.8,5),panelMat(2,2), 3.6,2.5,0);
+mesh(new THREE.PlaneGeometry(2.4,1.6),panelMat(1,1),0,4.2,0);            // lintel over the bookshelf
+mesh(new THREE.PlaneGeometry(12,5),panelMat(5,2),0,2.5,10,0,Math.PI,0);  // south
+mesh(new THREE.PlaneGeometry(10,5),panelMat(4,2),-6,2.5,5,0,Math.PI/2,0);  // west
+mesh(new THREE.PlaneGeometry(10,5),panelMat(4,2), 6,2.5,5,0,-Math.PI/2,0); // east
+/* gold trim: crown + baseboard on every wall */
+gbox(0,4.86,0.06,12,0.07,0.06); gbox(0,0.14,0.06,12,0.26,0.05);
+gbox(0,4.86,9.94,12,0.07,0.06); gbox(0,0.14,9.94,12,0.26,0.05);
+gbox(-5.94,4.86,5,0.06,0.07,10); gbox(-5.94,0.14,5,0.05,0.26,10);
+gbox( 5.94,4.86,5,0.06,0.07,10); gbox( 5.94,0.14,5,0.05,0.26,10);
+/* wall colliders */
+addCollider(-3.6,0,4.8,0.45); addCollider(3.6,0,4.8,0.45);
+addCollider(0,10,12,0.45); addCollider(-6,5,0.45,10); addCollider(6,5,0.45,10);
+
+/* entry door (south wall, closed, decorative) — gold frame + dark glass slab */
+mesh(new THREE.PlaneGeometry(1.4,3.1),darkGlassMat,0,1.55,9.96,0,Math.PI,0);
+gbox(0,3.16,9.95,1.64,0.1,0.06); gbox(-0.8,1.58,9.95,0.1,3.16,0.06); gbox(0.8,1.58,9.95,0.1,3.16,0.06);
+el('a-sphere',world,{position:'0.55 1.5 9.9',radius:0.045,
+  material:'color:#ffd95e; emissive:#c9a227; emissiveIntensity:0.7; metalness:0.9; roughness:0.2'});
+
+/* wall sconces at CORRECT scale (globes 0.14 m) on east + west walls */
+[-5.9,5.9].forEach(function(sx){
+  cyl(world,sx,3.05,2.2,0.035,0.05,0.22,GOLD,{metal:0.9,rough:0.3});
+  el('a-sphere',world,{position:sx+' 3.24 2.2',radius:0.07,
+    material:'color:#ffe9a8; emissive:#ffbf3f; emissiveIntensity:1.1'});
+});
+
+/* rug — dark velvet with a gold border line */
+var rugM=mesh(new THREE.PlaneGeometry(8,5.5),velvetMat,0,0.03,6.2,-Math.PI/2,0,0);
+rugM.castShadow=false;
+gbox(0,0.032,3.5,8,0.006,0.07); gbox(0,0.032,8.9,8,0.006,0.07);
+gbox(-3.97,0.032,6.2,0.07,0.006,5.5); gbox(3.97,0.032,6.2,0.07,0.006,5.5);
+
+/* ================= SECRET PASSAGE (behind the bookshelf) ================= */
+(function(){
+  var pg=new THREE.Group(); pg.position.set(0,0,0); world.object3D.add(pg);
+  var pm=panelMat(1,1,0x6a6156);
+  var fl=mesh(new THREE.PlaneGeometry(2.4,2.6),marbleMat,0,0.02,-1.3,-Math.PI/2,0,0,pg); fl.castShadow=false;
+  mesh(new THREE.PlaneGeometry(2.6,3.4),pm,-1.2,1.7,-1.3,0,Math.PI/2,0,pg);
+  mesh(new THREE.PlaneGeometry(2.6,3.4),pm, 1.2,1.7,-1.3,0,-Math.PI/2,0,pg);
+  mesh(new THREE.PlaneGeometry(2.4,3.4),pm,0,1.7,-2.6,0,0,0,pg);
+  mesh(new THREE.PlaneGeometry(2.4,2.6),pm,0,3.4,-1.3,Math.PI/2,0,0,pg);
+  var glow=mesh(new THREE.PlaneGeometry(1.7,2.5),
+    new THREE.MeshBasicMaterial({color:0xffca7a}),0,1.6,-2.55,0,0,0,pg);
+  glow.castShadow=false; glow.receiveShadow=false;
+  label(world,0,2.9,-2.4,'SIMULATION ROOM',3.4,'#ffd95e',0);
+  addCollider(-1.35,-1.3,0.3,2.6); addCollider(1.35,-1.3,0.3,2.6); addCollider(0,-2.65,2.7,0.3);
+})();
+</script>
+
+<script>
+/* ================= SCREEN WALL (west wall — animated canvas, as in /3d/) ================= */
+var SCREEN_MODES=['gold','rain','stars','waves','off'];
+var SCREEN_NAMES={gold:'Drifting Gold Patterns',rain:'Indoor Rain',stars:'Starfield',waves:'Gold Waves',off:'Off (black)'};
+function makeScreen(x,y,z,ry,w,h,roomName){
+  var g=el('a-entity',world,{position:x+' '+y+' '+z,rotation:'0 '+ry+' 0'});
+  box(g,0,0,-0.06,w+0.35,h+0.35,0.12,GOLD,{metal:0.9,rough:0.25});
+  var p=plane(g,0,0,0,w,h,0x000000,{rough:0.4,metal:0.1});
+  var canvas=document.createElement('canvas'); canvas.width=1024; canvas.height=512;
+  var scr={el:p,canvas:canvas,ctx:canvas.getContext('2d'),tex:null,mode:0,
+           seed:Math.random()*1000,room:roomName,stars:[]};
+  for(var i=0;i<110;i++) scr.stars.push({x:Math.random(),y:Math.random(),r:Math.random()*1.6+0.4,p:Math.random()*6.28});
+  p.addEventListener('loaded',function(){
+    var mesh=p.getObject3D('mesh'); if(!mesh) return;
+    scr.tex=new THREE.CanvasTexture(canvas);
+    mesh.material.map=scr.tex; mesh.material.color.set(0xffffff); mesh.material.needsUpdate=true;
+  });
+  p.classList.add('interactable');
+  p.setAttribute('data-action','screen'); p.setAttribute('data-prompt','Change the wall screen');
+  p._screen=scr; screens.push(scr); interactables.push(p);
+  return scr;
+}
+function drawScreen(scr,t){
+  var c=scr.ctx,W=scr.canvas.width,H=scr.canvas.height,mode=SCREEN_MODES[scr.mode],sd=scr.seed;
+  if(mode==='off'){ c.fillStyle='#000'; c.fillRect(0,0,W,H); }
+  else if(mode==='gold'){
+    c.fillStyle='#070502'; c.fillRect(0,0,W,H);
+    for(var i=0;i<5;i++){
+      c.beginPath();
+      for(var x=0;x<=W;x+=8){
+        var y=H*0.5+Math.sin(x*0.012+t*0.0006+i*1.3+sd)*46*Math.sin(i+sd)+ (i-2)*26;
+        x===0?c.moveTo(x,y):c.lineTo(x,y);
+      }
+      c.strokeStyle='rgba(255,190,60,'+(0.5-i*0.07)+')'; c.lineWidth=2.4-i*0.3; c.stroke();
+    }
+    for(var j=0;j<40;j++){
+      var px=(j*97+sd*10+t*0.02*(1+j%3))%W, py=(j*57+sd*7)%H;
+      c.fillStyle='rgba(255,215,110,0.75)'; c.fillRect(px,py,2,2);
+    }
+  }
+  else if(mode==='rain'){
+    c.fillStyle='#04070d'; c.fillRect(0,0,W,H);
+    c.strokeStyle='rgba(150,200,255,0.65)'; c.lineWidth=1.4;
+    for(var k=0;k<90;k++){
+      var rx=(k*61+sd*13)%W, ry=((k*89+sd*7)+t*0.35*(1+k%3))%H;
+      c.beginPath(); c.moveTo(rx,ry); c.lineTo(rx-3,ry+13); c.stroke();
+    }
+    c.fillStyle='rgba(255,215,110,0.20)'; c.fillRect(0,H-16,W,2);
+  }
+  else if(mode==='stars'){
+    c.fillStyle='#010208'; c.fillRect(0,0,W,H);
+    for(var s=0;s<scr.stars.length;s++){
+      var st=scr.stars[s], tw=0.45+0.55*Math.abs(Math.sin(t*0.001+st.p));
+      c.fillStyle='rgba(255,240,200,'+tw+')';
+      c.beginPath(); c.arc(st.x*W,st.y*H,st.r,0,6.29); c.fill();
+    }
+    c.fillStyle='rgba(255,190,60,0.85)';
+    c.beginPath(); c.arc(W*0.78,H*0.26,13,0,6.29); c.fill();
+    c.fillStyle='rgba(1,2,8,0.9)';
+    c.beginPath(); c.arc(W*0.78+6,H*0.26-4,11,0,6.29); c.fill();
+  }
+  else if(mode==='waves'){
+    var grad=c.createLinearGradient(0,0,0,H);
+    grad.addColorStop(0,'#0a0601'); grad.addColorStop(1,'#1c1002');
+    c.fillStyle=grad; c.fillRect(0,0,W,H);
+    for(var wv=0;wv<26;wv++){
+      c.beginPath();
+      for(var xx=0;xx<=W;xx+=10){
+        var yy=wv*10+Math.sin(xx*0.02+t*0.0012+wv*0.7+sd)*7;
+        xx===0?c.moveTo(xx,yy):c.lineTo(xx,yy);
+      }
+      c.strokeStyle='rgba(255,'+(170+wv*3)+',60,'+(0.16+0.02*(wv%5))+')'; c.lineWidth=2; c.stroke();
+    }
+  }
+  if(scr.tex) scr.tex.needsUpdate=true;
+}
+makeScreen(-5.84,2.5,5,90,6,2.4,'Living Room');
+label(world,0,4.4,5,'LIVING ROOM',8);
+
+/* ================= INTERACTION REGISTRY ================= */
+function makeInteractable(entity,action,prompt,key){
+  entity.classList.add('interactable');
+  entity.setAttribute('data-action',action);
+  entity.setAttribute('data-prompt',prompt);
+  if(key) entity.setAttribute('data-key',key);
+  interactables.push(entity); return entity;
+}
+function promptSign(x,y,z,text,ry){
+  label(world,x,y,z,text,2.6,'#ffd95e',ry||0);
+}
+
+/* ================= FLOOR-RISING TV =================
+   Same slot, travel and trigger as /3d/ — the TV now rises out
+   of a low black-and-gold hatch (real gold PBR rim) so the
+   marble floor stays one clean plane. Down position is 0.25 m
+   lower than /3d/ so the screen hides fully inside the hatch. */
+(function(){
+  gbox(0,0.07,2.62,3.3,0.14,0.1); gbox(0,0.07,3.38,3.3,0.14,0.1);
+  gbox(-1.6,0.07,3,0.1,0.14,0.86); gbox(1.6,0.07,3,0.1,0.14,0.86);
+  var inner=mesh(new THREE.BoxGeometry(3.1,0.16,0.66),
+    new THREE.MeshStandardMaterial({color:0x050505,roughness:0.9}),0,0.05,3);
+  inner.castShadow=false;
+  var g=el('a-entity',world,{position:'0 -1.95 3'});
+  box(g,0,0.25,0,2.9,0.5,0.22,GOLD,{metal:0.9,rough:0.3});
+  var scr=box(g,0,1.15,0,2.7,1.5,0.1,0x05070c,{emissive:0x1b3a55,ei:0.7});
+  plane(g,0,1.15,0.07,2.45,1.28,0x0d2233,{emissive:0x2e6ea8,ei:0.55});
+  makeInteractable(scr,'tv','Floor TV — raise / lower');
+  promptSign(0,2.6,3.9,'\u25B6 FLOOR TV',0);
+  animProps.tv={group:g,y:-1.95,target:-1.95,up:0.15,down:-1.95,on:false};
+})();
+
+/* ================= BOOKSHELF SECRET DOOR =================
+   Same pivot, swing and collider swap as /3d/; the carcass now
+   wears the real paneled-wood PBR and real gold shelf edges.  */
+var bookshelfPivot;
+(function(){
+  bookshelfPivot=el('a-entity',world,{position:'-1.2 0 0'});
+  var g=el('a-entity',bookshelfPivot,{position:'1.2 0 0'});
+  var carcass=box(g,0,1.7,0,2.4,3.4,0.34,0x241708,{rough:0.6});
+  applyPBR(carcass,panelMat(1,1,0x9a8f80));
+  var bookCols=[0x7a1f1f,0x1f3a7a,0xc9a227,0x2e5e2e,0x5e2e7a,0xb0b0b0,0x8a4a1f];
+  for(var r=0;r<3;r++){
+    var shelf=box(g,0,0.75+r*0.95,0.2,2.2,0.06,0.3,GOLD,{metal:0.85});
+    applyPBR(shelf,goldMat);
+    for(var b=0;b<8;b++){
+      box(g,-0.95+b*0.27,1.12+r*0.95,0.2,0.2,0.72,0.2,bookCols[(b+r*3)%bookCols.length],{rough:0.8});
+    }
+  }
+  var knob=el('a-sphere',g,{position:'0.95 1.6 0.3',radius:0.07,
+    material:'color:#ffd95e; emissive:#c9a227; emissiveIntensity:0.7; metalness:0.9; roughness:0.2'});
+  makeInteractable(knob,'bookshelf','Bookshelf — pull to open the secret door');
+  var front=box(g,0,1.7,0.19,2.4,3.4,0.02,0x000000,{opacity:0.0});
+  makeInteractable(front,'bookshelf','Bookshelf — pull to open the secret door');
+  promptSign(0,3.8,0.7,'SECRET: THE BOOKSHELF',0);
+  animProps.bookshelf={pivot:bookshelfPivot,angle:0,target:0,open:false,
+                       collider:addCollider(0,0,2.5,0.5,'bookshelf')};
+})();
+
+/* ================= BUILT ARMCHAIRS (velvet PBR, real scale) ================= */
+function armchair(x,z,ry){
+  var g=new THREE.Group(); g.position.set(x,0,z); g.rotation.y=ry;
+  world.object3D.add(g);
+  function part(geo,mat,px,py,pz,rx){
+    var m=new THREE.Mesh(geo,mat); m.position.set(px,py,pz);
+    if(rx) m.rotation.x=rx;
+    m.castShadow=true; m.receiveShadow=true; g.add(m); return m;
+  }
+  part(new THREE.BoxGeometry(0.8,0.3,0.74),velvetMat,0,0.27,0);                 // base
+  part(new THREE.BoxGeometry(0.86,0.2,0.8),velvetMat,0,0.5,0);                  // seat block
+  part(new THREE.BoxGeometry(0.68,0.11,0.6),velvetMat,0,0.63,-0.02);           // cushion
+  part(new THREE.BoxGeometry(0.86,0.66,0.2),velvetMat,0,0.85,0.33,0.1);         // back
+  part(new THREE.BoxGeometry(0.17,0.26,0.78),velvetMat,-0.44,0.68,0);          // arms
+  part(new THREE.BoxGeometry(0.17,0.26,0.78),velvetMat, 0.44,0.68,0);
+  [[-0.36,-0.3],[0.36,-0.3],[-0.36,0.3],[0.36,0.3]].forEach(function(l){
+    part(new THREE.CylinderGeometry(0.025,0.025,0.14,10),goldMat,l[0],0.07,l[1]); // gold feet
+  });
+  contactShadow(x,z,1.5,1.4,0.8);
+  addCollider(x,z,1.15,1.15);
+}
+armchair(-3.6,6.3,0.5);
+armchair( 3.6,6.3,-0.5);
+
+/* contact shadows under the model furniture (anchors filled by the loader script) */
+contactShadow(0,7.6,3.4,1.7,0.9);
+contactShadow(0,5.75,2.2,1.3,0.8);
+addCollider(0,7.6,5.2,1.3);      // sofa footprint (same as /3d/)
+addCollider(0,5.75,1.8,1.1);     // coffee table footprint
+
+/* model anchors — the module script loads the real glTF models into these */
+window.__anchors={
+  sofa:{pos:[0,0,7.6],rotY:Math.PI,width:2.4},
+  table:{pos:[0,0,5.75],rotY:0,width:1.5},
+  lamp:{pos:[0,5,5],rotY:0,width:0.55,hangTop:true}
+};
+
+/* light switch plate (east wall) */
+(function(){
+  var sw=box(world,5.95,1.4,8.6,0.05,0.26,0.18,GOLD,{metal:0.9,rough:0.25,emissive:GOLD,ei:0.35});
+  makeInteractable(sw,'lights','Wall switch — lighting mood');
+  promptSign(5.7,1.85,8.6,'LIGHTS',-90);
+})();
+
+/* ================= RENDERER POLISH =================
+   ACES filmic tone mapping, sRGB output, soft shadows, and the
+   ONE shadow-casting key light (warm spot over the seating
+   group). The HDRI environment itself is set by the module
+   script once the .hdr arrives (PMREM).                     */
+(function(){
+  var sceneEl2=document.getElementById('scene');
+  sceneEl2.addEventListener('loaded',function(){
+    try{
+      var r=sceneEl2.renderer;
+      if(r){ r.toneMapping=THREE.ACESFilmicToneMapping; r.toneMappingExposure=1.08;
+             r.outputColorSpace=THREE.SRGBColorSpace;
+             r.shadowMap.enabled=true; r.shadowMap.type=THREE.PCFSoftShadowMap; }
+      spotLight=new THREE.SpotLight(0xffd9a0,45,20,1.0,0.75,1.4);
+      spotLight.position.set(0,4.85,5.2);
+      spotLight.castShadow=true;
+      spotLight.shadow.mapSize.set(1024,1024);
+      spotLight.shadow.bias=-0.0004;
+      spotLight.shadow.camera.near=1; spotLight.shadow.camera.far=12;
+      var tgt=new THREE.Object3D(); tgt.position.set(0,0,5);
+      sceneEl2.object3D.add(tgt); spotLight.target=tgt;
+      sceneEl2.object3D.add(spotLight);
+      world.object3D.traverse(function(n){
+        if(n.isMesh){
+          n.receiveShadow=true;
+          var m=n.material;
+          if(m&&!m.transparent) n.castShadow=true;
+          if(m&&'envMapIntensity' in m&&!(m.userData&&m.userData.keepEnv)) m.envMapIntensity=0.6;
+          if(m) m.needsUpdate=true;
+        }
+      });
+    }catch(e){ /* shadows are polish only - never break the room */ }
+  });
+})();
+</script>
+
+<script>
+/* ================= SOUND (WebAudio, all generated) =================
+   NO always-on oscillators — that was the loud buzzing in the
+   old build. Ambience is only a very soft brown-noise room
+   tone (quiet air, no pitch), plus soft interaction clicks.  */
+var AE={ctx:null,master:null,on:false};
+function audioInit(){
+  if(AE.ctx) { if(AE.ctx.state==='suspended') AE.ctx.resume(); return; }
+  try{
+    var C=new (window.AudioContext||window.webkitAudioContext)();
+    AE.ctx=C;
+    AE.master=C.createGain(); AE.master.gain.value=0.9; AE.master.connect(C.destination);
+    (function(){
+      var len=4*C.sampleRate, buf=C.createBuffer(1,len,C.sampleRate), d=buf.getChannelData(0), last=0;
+      for(var i=0;i<len;i++){ var wht=Math.random()*2-1; last=(last+0.02*wht)/1.02; d[i]=last*3.2; }
+      var src=C.createBufferSource(); src.buffer=buf; src.loop=true;
+      var lp=C.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=240;
+      var g=C.createGain(); g.gain.value=0.011;
+      var lfo=C.createOscillator(); lfo.type='sine'; lfo.frequency.value=0.07;
+      var lfoG=C.createGain(); lfoG.gain.value=0.004;
+      lfo.connect(lfoG); lfoG.connect(g.gain); lfo.start();
+      src.connect(lp); lp.connect(g); g.connect(AE.master); src.start();
+    })();
+    AE.on=true;
+    document.getElementById('soundBtn').innerHTML='&#128266; Sound: ON';
+  }catch(e){ /* audio unavailable — room still works silently */ }
+}
+function blip(freq,delay,dur,type,vol){
+  if(!AE.ctx) return;
+  var C=AE.ctx,t=C.currentTime+(delay||0);
+  var o=C.createOscillator(),g=C.createGain();
+  o.type=type||'sine'; o.frequency.value=freq;
+  g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol||0.06,t+0.015);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+(dur||0.25));
+  o.connect(g); g.connect(AE.master); o.start(t); o.stop(t+(dur||0.25)+0.05);
+}
+function chime(){ blip(880,0,0.3,'sine',0.05); blip(1318,0.09,0.4,'sine',0.045); }
+function clickSnd(){ blip(520,0,0.07,'triangle',0.022); }
+function whoosh(){
+  if(!AE.ctx) return;
+  var C=AE.ctx,t=C.currentTime,len=0.5*C.sampleRate,buf=C.createBuffer(1,len,C.sampleRate),d=buf.getChannelData(0);
+  for(var i=0;i<len;i++) d[i]=(Math.random()*2-1)*(1-i/len);
+  var src=C.createBufferSource(); src.buffer=buf;
+  var bp=C.createBiquadFilter(); bp.type='bandpass'; bp.Q.value=1.2;
+  bp.frequency.setValueAtTime(300,t); bp.frequency.exponentialRampToValueAtTime(1800,t+0.35);
+  var g=C.createGain(); g.gain.value=0.12;
+  src.connect(bp); bp.connect(g); g.connect(AE.master); src.start(t);
+}
+function stepSnd(){
+  if(!AE.ctx) return;
+  var C=AE.ctx,t=C.currentTime,len=0.07*C.sampleRate,buf=C.createBuffer(1,len,C.sampleRate),d=buf.getChannelData(0);
+  for(var i=0;i<len;i++) d[i]=(Math.random()*2-1)*(1-i/len);
+  var src=C.createBufferSource(); src.buffer=buf;
+  var lp=C.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=320;
+  var g=C.createGain(); g.gain.value=0.05;
+  src.connect(lp); lp.connect(g); g.connect(AE.master); src.start(t);
+}
+document.getElementById('soundBtn').addEventListener('click',function(){ audioInit(); toast('Sound on — soft room tone and clicks only'); });
+document.getElementById('scene').addEventListener('enter-vr',audioInit);
+document.getElementById('enterVrBtn').addEventListener('click',function(){
+  audioInit();
+  var sc=document.getElementById('scene');
+  if(sc.enterVR) sc.enterVR();
+});
+
+/* ================= TOAST + HIGHLIGHT ================= */
+var toastTimer=null;
+function toast(msg){
+  var t=document.getElementById('toast');
+  t.textContent=msg; t.style.opacity='1';
+  clearTimeout(toastTimer); toastTimer=setTimeout(function(){ t.style.opacity='0'; },2600);
+}
+interactables.forEach(function(elm){
+  elm.addEventListener('mouseenter',function(){
+    var m=elm.getAttribute('material');
+    if(m&&m.opacity!==0){
+      elm._hl={e:m.emissive,i:m.emissiveIntensity};
+      elm.setAttribute('material','emissive','#ffbf3f');
+      elm.setAttribute('material','emissiveIntensity','1.1');
+    }
+    var p=elm.getAttribute('data-prompt'); if(p) toast(p);
+  });
+  elm.addEventListener('mouseleave',function(){
+    if(elm._hl){
+      elm.setAttribute('material','emissive',elm._hl.e||'#000000');
+      elm.setAttribute('material','emissiveIntensity',elm._hl.i||0);
+      elm._hl=null;
+    }
+  });
+  elm.addEventListener('click',function(){ audioInit(); doAction(elm.getAttribute('data-action'),elm.getAttribute('data-key'),elm); });
+});
+
+/* ================= ACTIONS ================= */
+function doAction(action,key,elm){
+  if(action==='screen'){
+    var scr=elm._screen; if(!scr) return;
+    scr.mode=(scr.mode+1)%SCREEN_MODES.length;
+    drawScreen(scr,performance.now());
+    chime();
+    toast(scr.room+' walls: '+SCREEN_NAMES[SCREEN_MODES[scr.mode]]);
+  }
+  else if(action==='bookshelf'){
+    var b=animProps.bookshelf; b.open=!b.open; b.target=b.open?-108:0;
+    if(b.open) removeCollider(b.collider); else if(colliders.indexOf(b.collider)<0) colliders.push(b.collider);
+    whoosh(); toast(b.open?'The bookshelf swings open — Simulation Room':'Bookshelf closed');
+  }
+  else if(action==='tv'){
+    var t=animProps.tv; t.on=!t.on; t.target=t.on?t.up:t.down;
+    whoosh(); toast(t.on?'TV rising from the floor':'TV sinking into the floor');
+  }
+  else if(action==='lights'){
+    animProps.lightMode=((animProps.lightMode||0)+1)%3;
+    var names=['Grand Bright','Soft Dim','Gold Glow'], f=[1,0.35,1.5][animProps.lightMode];
+    document.querySelectorAll('a-light').forEach(function(L){
+      if(L._base===undefined) L._base=parseFloat(L.getAttribute('intensity'))||0.5;
+      L.setAttribute('intensity',String(L._base*f));
+    });
+    if(spotLight) spotLight.intensity=45*f;
+    clickSnd(); toast('Lighting: '+names[animProps.lightMode]);
+  }
+}
+
+/* ================= LOCOMOTION + COLLISION =================
+   Copied from the /3d/ world, whose movement Deezy confirmed
+   in the headset ("that part is fire"): sticks read from the
+   XR session inputSources (never navigator.getGamepads in
+   VR), the loop runs in an A-Frame tick (never rAF), forward
+   comes from the REAL camera's world quaternion applied to
+   (0,0,-1), right stick is a smooth proportional turn (no
+   snap), and the desktop 1.6 m camera offset is zeroed in VR.
+   Only the bounds changed: one room + the secret passage.   */
+var rig=document.getElementById('rig'), cam=document.getElementById('cam');
+var sceneEl=document.getElementById('scene');
+var keys={}, stepAcc=0, velX=0, velZ=0;
+document.addEventListener('keydown',function(e){ keys[e.code]=true; });
+document.addEventListener('keyup',function(e){ keys[e.code]=false; });
+sceneEl.addEventListener('enter-vr',function(){ cam.setAttribute('position','0 0 0'); });
+sceneEl.addEventListener('exit-vr',function(){ cam.setAttribute('position','0 1.6 0'); });
+function canStand(x,z){
+  var inPassage=(animProps.bookshelf&&animProps.bookshelf.open)&&Math.abs(x)<1.0&&z<0.35&&z>-2.25;
+  if(!inPassage){
+    if(x<-5.6||x>5.6||z<0.35||z>9.6) return false;
+  }
+  for(var i=0;i<colliders.length;i++){
+    var c=colliders[i];
+    if(x>c.minX-0.33&&x<c.maxX+0.33&&z>c.minZ-0.33&&z<c.maxZ+0.33) return false;
+  }
+  return true;
+}
+function dzAxis(v){ var a=Math.abs(v||0); if(a<0.18) return 0; return Math.sign(v)*Math.min(1,(a-0.18)/0.82); }
+function readSticks(){
+  var out={x:0,y:0,turn:0}, sawXR=false;
+  function eat(gp,hand){
+    if(!gp||!gp.axes||!gp.axes.length) return;
+    var ax=0, ay=0;
+    if(gp.axes.length>=4){ ax=gp.axes[2]||0; ay=gp.axes[3]||0;
+      if(!ax&&!ay&&(gp.axes[0]||gp.axes[1])){ ax=gp.axes[0]||0; ay=gp.axes[1]||0; } }
+    else { ax=gp.axes[0]||0; ay=gp.axes[1]||0; }
+    if(hand==='left'){ out.x+=ax; out.y+=-ay; }
+    else if(hand==='right'){ out.turn+=ax; }
+  }
+  var session=sceneEl.xrSession||null;
+  if(!session&&sceneEl.renderer&&sceneEl.renderer.xr&&sceneEl.renderer.xr.getSession){
+    try{ session=sceneEl.renderer.xr.getSession(); }catch(e){ session=null; }
+  }
+  if(session&&session.inputSources){
+    for(var i=0;i<session.inputSources.length;i++){
+      var srcS=session.inputSources[i];
+      if(srcS&&srcS.gamepad){ eat(srcS.gamepad,srcS.handedness); sawXR=true; }
+    }
+  }
+  if(!sawXR&&navigator.getGamepads){
+    var gps=navigator.getGamepads();
+    for(var j=0;j<gps.length;j++){
+      var gp=gps[j]; if(!gp) continue;
+      eat(gp, gp.hand||(j===0?'left':(j===1?'right':null)));
+    }
+  }
+  return out;
+}
+var _camQuat=new THREE.Quaternion();
+function locomotion(dt){
+  var fwd=new THREE.Vector3();
+  var camObj=sceneEl.camera||(cam.getObject3D?cam.getObject3D('camera'):null)||cam.object3D;
+  camObj.getWorldQuaternion(_camQuat);
+  fwd.set(0,0,-1).applyQuaternion(_camQuat); fwd.y=0;
+  if(fwd.lengthSq()<0.001) fwd.set(0,0,-1);
+  fwd.normalize();
+  var right=new THREE.Vector3().crossVectors(fwd,new THREE.Vector3(0,1,0));
+  var s=readSticks();
+  var f=dzAxis(s.y), r=dzAxis(s.x), turn=dzAxis(s.turn);
+  if(keys.KeyW||keys.ArrowUp) f+=1;
+  if(keys.KeyS||keys.ArrowDown) f-=1;
+  if(keys.KeyA||keys.ArrowLeft) r-=1;
+  if(keys.KeyD||keys.ArrowRight) r+=1;
+  if(keys.KeyQ) turn-=1;
+  if(keys.KeyE) turn+=1;
+  if(turn) rig.object3D.rotation.y-=turn*1.9*dt;   // smooth continuous turn - no snap
+  var len=Math.hypot(f,r); if(len>1){ f/=len; r/=len; }
+  var speed=(keys.ShiftLeft||keys.ShiftRight)?4.4:2.6;
+  var tx=(fwd.x*f+right.x*r)*speed, tz=(fwd.z*f+right.z*r)*speed;
+  var k=1-Math.exp(-dt*7);                          // glide: ease toward target velocity
+  velX+=(tx-velX)*k; velZ+=(tz-velZ)*k;
+  if(Math.abs(velX)>0.004||Math.abs(velZ)>0.004){
+    var ox=rig.object3D.position.x, oz=rig.object3D.position.z;
+    var nx=ox+velX*dt, nz=oz+velZ*dt;
+    if(canStand(nx,oz)) rig.object3D.position.x=nx; else velX=0;
+    if(canStand(rig.object3D.position.x,nz)) rig.object3D.position.z=nz; else velZ=0;
+    stepAcc+=Math.hypot(rig.object3D.position.x-ox,rig.object3D.position.z-oz);
+    if(stepAcc>1.7){ stepAcc=0; stepSnd(); }
+  }
+}
+/* ================= PER-FRAME WORK (A-Frame tick - runs inside VR) ================= */
+var scrAcc=0;
+function frameStep(time,timeDelta){
+  var dt=Math.min(0.05,(timeDelta||16.7)/1000);
+  locomotion(dt);
+  function lerpPos(obj,axis,target,spd){
+    var cur=obj.object3D.position[axis], d=target-cur, step=spd*dt;
+    obj.object3D.position[axis]=Math.abs(d)<step?target:cur+Math.sign(d)*step;
+  }
+  function lerpRot(obj,targetDeg,spd){
+    var cur=obj.object3D.rotation.y, tgt=targetDeg*Math.PI/180, d=tgt-cur;
+    obj.object3D.rotation.y=Math.abs(d)<spd*dt?tgt:cur+Math.sign(d)*spd*dt;
+  }
+  lerpPos(animProps.tv.group,'y',animProps.tv.target,1.1);
+  lerpRot(animProps.bookshelf.pivot,animProps.bookshelf.target,1.9);
+  scrAcc+=dt;
+  if(scrAcc>0.18){
+    scrAcc=0;
+    for(var k2=0;k2<screens.length;k2++) drawScreen(screens[k2],performance.now());
+  }
+}
+if(window.AFRAME){
+  AFRAME.registerComponent('mansion-drive',{ tick:function(time,timeDelta){ frameStep(time,timeDelta); } });
+  sceneEl.setAttribute('mansion-drive','');
+}else{
+  var _lt=performance.now();
+  (function _loop(now){ requestAnimationFrame(_loop); frameStep(now,now-_lt); _lt=now; })(performance.now());
+}
+screens.forEach(function(s){ drawScreen(s,performance.now()); });
+setTimeout(function(){ toast('Living Room test — same walking as /3d/, new skin. Point at gold things + trigger.'); },1200);
+</script>
+
+<script type="module">
+/* ================= HDRI LIGHT + REAL glTF MODELS =================
+   Runs as an ES module (three@0.160.0, the same three version
+   A-Frame 1.5.0 bundles). Two jobs:
+   1) Image-based lighting: load the Poly Haven HDRI
+      warm_restaurant_night (1K .hdr), PMREM it with the GLOBAL
+      renderer/THREE (so the env texture matches the scene's
+      three instance) and set scene.environment. Fallback: a
+      PMREM of a tiny warm env scene built from global THREE.
+   2) Load three real CC0 glTF models (sofa, coffee table,
+      ceiling lamp) and AUTO-FIT each to a real-world size by
+      its bounding box — the fix for the old builds' oversized
+      blob fixtures. Poly Haven glTF JSONs point at
+      textures/xxx.jpg beside the .gltf, but the files live
+      under Models/jpg/ — the URL modifier rewrites them.     */
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+
+var GT=window.THREE;
+var sceneEl=document.getElementById('scene');
+function msg(t){ if(window.__setLoadMsg) window.__setLoadMsg(t); }
+
+function applyEnvironment(){
+  var renderer=sceneEl.renderer, scene=sceneEl.object3D;
+  if(!renderer||!scene) return;
+  var pmrem=new GT.PMREMGenerator(renderer);
+  var HDRI='https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/warm_restaurant_night_1k.hdr';
+  new RGBELoader().load(HDRI,function(tex){
+    try{
+      /* rebuild the equirect texture with the GLOBAL THREE
+         classes (the loader's are the module instance's) */
+      var img=tex.image;
+      var data=new GT.DataTexture(img.data,img.width,img.height,GT.RGBAFormat,GT.HalfFloatType);
+      data.mapping=GT.EquirectangularReflectionMapping;
+      data.needsUpdate=true;
+      var envRT=pmrem.fromEquirectangular(data);
+      scene.environment=envRT.texture;
+      tex.dispose(); data.dispose();
+      msg('Ready — HDRI light + real textures + real models. Press ENTER VR.');
+    }catch(e){ fallbackEnv(pmrem,scene); }
+  },undefined,function(){ fallbackEnv(pmrem,scene); });
+}
+function fallbackEnv(pmrem,scene){
+  try{
+    var es=new GT.Scene();
+    es.background=new GT.Color(0x050505);
+    function panel(x,y,z,w,h,color,i,ry){
+      var m=new GT.Mesh(new GT.PlaneGeometry(w,h),
+        new GT.MeshBasicMaterial({color:new GT.Color(color).multiplyScalar(i)}));
+      m.position.set(x,y,z); if(ry) m.rotation.y=ry;
+      es.add(m); return m;
+    }
+    panel(0,3,-6,10,5,0xffca7a,5,0);          // warm gold wall ahead
+    panel(-6,3,0,10,5,0xffb85e,3,Math.PI/2);  // warm side
+    panel(6,2,0,8,4,0x9fd0ff,1.2,-Math.PI/2); // one cool window
+    panel(0,6,0,12,12,0xffe2b0,2.2,0).rotation.x=Math.PI/2; // warm ceiling
+    var rt=pmrem.fromScene(es,0.05);
+    scene.environment=rt.texture;
+    msg('Ready — warm studio light (HDRI fallback) + real textures + models. Press ENTER VR.');
+  }catch(e){ msg('Ready — real textures + models (no HDRI). Press ENTER VR.'); }
+}
+if(sceneEl.hasLoaded) applyEnvironment();
+else sceneEl.addEventListener('loaded',applyEnvironment);
+
+/* ---------------- glTF models, auto-fit to real size ---------------- */
+var manager=new GT.LoadingManager();
+manager.setURLModifier(function(url){
+  var m=url.match(/Models\/gltf\/(\d+k)\/([^/]+)\/textures\/(.+)$/);
+  if(m) return 'https://dl.polyhaven.org/file/ph-assets/Models/jpg/'+m[1]+'/'+m[2]+'/'+m[3];
+  return url;
+});
+var loader=new GLTFLoader(manager);
+var MODELS={
+  sofa:'https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/sofa_03/sofa_03_1k.gltf',
+  table:'https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/modern_coffee_table_01/modern_coffee_table_01_1k.gltf',
+  lamp:'https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/modern_ceiling_lamp_01/modern_ceiling_lamp_01_1k.gltf'
+};
+var doneCount=0, totalCount=Object.keys(MODELS).length;
+function fitModel(key,obj){
+  var spec=window.__anchors[key]; if(!spec) return;
+  obj.rotation.y=spec.rotY||0;
+  var bb=new GT.Box3().setFromObject(obj);
+  var size=new GT.Vector3(); bb.getSize(size);
+  if(size.x>0.001){
+    var s=spec.width/size.x;
+    obj.scale.setScalar(s);
+  }
+  bb=new GT.Box3().setFromObject(obj);
+  var center=new GT.Vector3(); bb.getCenter(center);
+  obj.position.x+=spec.pos[0]-center.x;
+  obj.position.z+=spec.pos[2]-center.z;
+  if(spec.hangTop) obj.position.y+=spec.pos[1]-bb.max.y;
+  else obj.position.y+=0.03-bb.min.y;
+  obj.traverse(function(n){
+    if(n.isMesh){
+      n.castShadow=true; n.receiveShadow=true;
+      var mats=Array.isArray(n.material)?n.material:[n.material];
+      mats.forEach(function(mt){ if(mt&&'envMapIntensity' in mt) mt.envMapIntensity=0.9; });
+    }
+  });
+  document.getElementById('world').object3D.add(obj);
+}
+Object.keys(MODELS).forEach(function(key){
+  loader.load(MODELS[key],function(gltf){
+    try{ fitModel(key,gltf.scene); }catch(e){ /* model fit failed — room still complete */ }
+    doneCount++;
+    if(doneCount>=totalCount) msg('Ready — HDRI light + real textures + real models. Press ENTER VR.');
+  },undefined,function(){
+    doneCount++;
+    msg('A furniture model failed to load — the rest of the room is complete.');
+  });
+});
+</script>
+</body>
+</html>
