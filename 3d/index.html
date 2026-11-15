@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Deezy's Mansion — Interactive 3D VR World</title>
 <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-<meta name="mansion-version" content="v2-2026-11-15-rebuild">
+<meta name="mansion-version" content="v3-2026-11-15-fix">
 <style>
   html,body{margin:0;padding:0;background:#000;font-family:Arial,Helvetica,sans-serif;}
   #hud{position:fixed;top:10px;left:10px;z-index:10;color:#f5d67b;background:rgba(0,0,0,.72);
@@ -27,7 +27,7 @@
 <div id="hud">
   <h1>DEEZY'S MANSION — 3D VR WORLD</h1>
   <div><b>Move:</b> left thumbstick &nbsp; <b>Turn:</b> right thumbstick - smooth, no snap</div>
-  <div><b>Build v2:</b> fixed VR movement, taller grand rooms, richer materials</div>
+  <div><b>Build v3:</b> movement direction fixed (was inverted), buzz removed, richer textures + light</div>
   <div><b>Interact:</b> point at a glowing gold object + pull <b>trigger</b></div>
   <div><b>Desktop:</b> W A S D to walk, mouse to look, click objects</div>
   <div style="margin-top:6px"><b>Try:</b> kitchen faucet &bull; wall screens (change the walls) &bull;
@@ -136,62 +136,128 @@ function makeTex(w,h,draw){
   var c=document.createElement('canvas'); c.width=w; c.height=h; c._tid=(++_texId);
   draw(c.getContext('2d'),w,h); return c;
 }
+function maxAniso(){
+  try{ var r=document.getElementById('scene').renderer;
+       return r?Math.min(8,r.capabilities.getMaxAnisotropy()):4; }catch(e){ return 4; }
+}
 function texify(entity,canvas,rx,ry){
   if(!entity||!canvas) return;
   entity.addEventListener('loaded',function(){
     var mesh=entity.getObject3D&&entity.getObject3D('mesh'); if(!mesh) return;
-    var key=canvas._tid+'_'+rx+'_'+ry, tex=_texCache[key];
-    if(!tex){
-      tex=new THREE.CanvasTexture(canvas);
+    var key=canvas._tid+'_'+rx+'_'+ry, pair=_texCache[key];
+    if(!pair){
+      var tex=new THREE.CanvasTexture(canvas);
       tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.repeat.set(rx||1,ry||1);
-      tex.anisotropy=4; tex.colorSpace=THREE.SRGBColorSpace;
-      _texCache[key]=tex;
+      tex.anisotropy=maxAniso(); tex.colorSpace=THREE.SRGBColorSpace;
+      // bump map from the same drawing: gives the flat color real
+      // surface depth under the lights (veins, panel bevels, stone)
+      var bump=new THREE.CanvasTexture(canvas);
+      bump.wrapS=bump.wrapT=THREE.RepeatWrapping; bump.repeat.set(rx||1,ry||1);
+      bump.anisotropy=maxAniso();
+      pair={map:tex,bump:bump}; _texCache[key]=pair;
     }
-    mesh.material.map=tex; mesh.material.color.set(0xffffff); mesh.material.needsUpdate=true;
+    mesh.material.map=pair.map;
+    if(mesh.material.bumpMap!==undefined){
+      mesh.material.bumpMap=pair.bump;
+      mesh.material.bumpScale=(canvas._bump!==undefined?canvas._bump:0.8);
+    }
+    mesh.material.color.set(0xffffff); mesh.material.needsUpdate=true;
   });
 }
-var MARBLE_TEX=makeTex(512,512,function(g,w,h){
-  g.fillStyle='#101013'; g.fillRect(0,0,w,h);
-  for(var i=0;i<2600;i++){ g.fillStyle='rgba(255,255,255,'+(Math.random()*0.03)+')'; g.fillRect(Math.random()*w,Math.random()*h,1.6,1.6); }
-  for(var v=0;v<14;v++){
-    g.beginPath(); var x=Math.random()*w,y=0; g.moveTo(x,y);
-    while(y<h){ y+=22+Math.random()*30; x+=(Math.random()-0.5)*46; g.lineTo(x,y); }
+var MARBLE_TEX=makeTex(1024,1024,function(g,w,h){
+  var base=g.createLinearGradient(0,0,w,h);
+  base.addColorStop(0,'#141419'); base.addColorStop(0.5,'#0e0e11'); base.addColorStop(1,'#121216');
+  g.fillStyle=base; g.fillRect(0,0,w,h);
+  // large soft mineral mottling so the stone is not one flat tone
+  for(var m=0;m<46;m++){
+    var mx=Math.random()*w,my=Math.random()*h,mr=90+Math.random()*240;
+    var mg=g.createRadialGradient(mx,my,4,mx,my,mr);
+    var light=Math.random()>0.5;
+    mg.addColorStop(0,light?'rgba(70,70,84,0.16)':'rgba(0,0,0,0.20)'); mg.addColorStop(1,'rgba(0,0,0,0)');
+    g.fillStyle=mg; g.beginPath(); g.arc(mx,my,mr,0,6.29); g.fill();
+  }
+  for(var i=0;i<5200;i++){ g.fillStyle='rgba(255,255,255,'+(Math.random()*0.035)+')'; g.fillRect(Math.random()*w,Math.random()*h,1.6,1.6); }
+  // veins: a soft wide pass under a thin bright pass reads as depth
+  for(var v=0;v<24;v++){
+    var pts=[], x=Math.random()*w, y=0; pts.push([x,y]);
+    while(y<h){ y+=20+Math.random()*34; x+=(Math.random()-0.5)*54; pts.push([x,y]); }
     var gold=v%3===0;
-    g.strokeStyle=gold?'rgba(201,162,39,0.5)':'rgba(210,210,220,0.20)';
-    g.lineWidth=gold?1.6:1; g.stroke();
+    for(var pass=0;pass<2;pass++){
+      g.beginPath(); g.moveTo(pts[0][0],pts[0][1]);
+      for(var p2=1;p2<pts.length;p2++) g.lineTo(pts[p2][0],pts[p2][1]);
+      if(pass===0){ g.strokeStyle=gold?'rgba(201,162,39,0.13)':'rgba(200,200,215,0.07)'; g.lineWidth=gold?5:3.4; }
+      else{ g.strokeStyle=gold?'rgba(226,186,74,0.55)':'rgba(215,215,228,0.24)'; g.lineWidth=gold?1.7:1.1; }
+      g.stroke();
+    }
+    // small branch veins off the main run
+    if(v%2===0){ var bp2=pts[3+((v*7)%(pts.length-4))];
+      g.beginPath(); g.moveTo(bp2[0],bp2[1]);
+      g.lineTo(bp2[0]+(Math.random()-0.5)*220,bp2[1]+60+Math.random()*120);
+      g.strokeStyle='rgba(210,210,222,0.13)'; g.lineWidth=0.9; g.stroke(); }
   }
   g.strokeStyle='rgba(201,162,39,0.35)'; g.lineWidth=3; g.strokeRect(1,1,w-2,h-2);
 });
-var PANEL_TEX=makeTex(512,512,function(g,w,h){
-  g.fillStyle='#17171c'; g.fillRect(0,0,w,h);
-  for(var i=0;i<1600;i++){ g.fillStyle='rgba(255,255,255,'+(Math.random()*0.025)+')'; g.fillRect(Math.random()*w,Math.random()*h,1.5,1.5); }
+MARBLE_TEX._bump=0.7;
+var PANEL_TEX=makeTex(1024,1024,function(g,w,h){
+  var base=g.createLinearGradient(0,0,0,h);
+  base.addColorStop(0,'#1a1a20'); base.addColorStop(1,'#121216');
+  g.fillStyle=base; g.fillRect(0,0,w,h);
+  for(var i=0;i<3400;i++){ g.fillStyle='rgba(255,255,255,'+(Math.random()*0.025)+')'; g.fillRect(Math.random()*w,Math.random()*h,1.5,1.5); }
+  // faint vertical brushing so big wall runs are not dead flat
+  for(var b=0;b<130;b++){ var bx=Math.random()*w;
+    g.fillStyle='rgba(255,255,255,'+(Math.random()*0.02)+')'; g.fillRect(bx,0,1,h); }
   function panel(x,y,pw,ph){
-    g.strokeStyle='rgba(201,162,39,0.85)'; g.lineWidth=3; g.strokeRect(x,y,pw,ph);
-    g.strokeStyle='rgba(0,0,0,0.65)'; g.lineWidth=7; g.strokeRect(x+6,y+6,pw-12,ph-12);
-    g.strokeStyle='rgba(255,217,94,0.28)'; g.lineWidth=1.5; g.strokeRect(x+11,y+11,pw-22,ph-22);
+    // beveled inlay: lit top/left edge, shadowed bottom/right edge,
+    // and a soft vertical sheen inside the panel field
+    var sheen=g.createLinearGradient(x,y,x,y+ph);
+    sheen.addColorStop(0,'rgba(255,255,255,0.055)'); sheen.addColorStop(0.5,'rgba(255,255,255,0)');
+    sheen.addColorStop(1,'rgba(0,0,0,0.14)');
+    g.fillStyle=sheen; g.fillRect(x,y,pw,ph);
+    g.strokeStyle='rgba(201,162,39,0.9)'; g.lineWidth=4; g.strokeRect(x,y,pw,ph);
+    g.strokeStyle='rgba(0,0,0,0.7)'; g.lineWidth=9; g.strokeRect(x+8,y+8,pw-16,ph-16);
+    g.strokeStyle='rgba(255,224,120,0.85)'; g.lineWidth=2;
+    g.beginPath(); g.moveTo(x+15,y+ph-15); g.lineTo(x+15,y+15); g.lineTo(x+pw-15,y+15); g.stroke();
+    g.strokeStyle='rgba(0,0,0,0.55)';
+    g.beginPath(); g.moveTo(x+15,y+ph-15); g.lineTo(x+pw-15,y+ph-15); g.lineTo(x+pw-15,y+15); g.stroke();
+    g.strokeStyle='rgba(255,217,94,0.30)'; g.lineWidth=2; g.strokeRect(x+22,y+22,pw-44,ph-44);
   }
-  panel(28,28,w/2-56,h-56); panel(w/2+28,28,w/2-56,h-56);
+  panel(36,36,w/2-72,h-72); panel(w/2+36,36,w/2-72,h-72);
   g.fillStyle='rgba(201,162,39,0.5)'; g.fillRect(0,h/2-1,w,2);
 });
-var STONE_TEX=makeTex(512,512,function(g,w,h){
+PANEL_TEX._bump=0.9;
+var STONE_TEX=makeTex(1024,1024,function(g,w,h){
   g.fillStyle='#232326'; g.fillRect(0,0,w,h);
-  for(var r=0;r<90;r++){
-    var x=Math.random()*w,y=Math.random()*h,rad=14+Math.random()*36;
+  for(var r=0;r<190;r++){
+    var x=Math.random()*w,y=Math.random()*h,rad=18+Math.random()*64;
     var grad=g.createRadialGradient(x,y,2,x,y,rad);
-    grad.addColorStop(0,'rgba(120,120,130,0.25)'); grad.addColorStop(1,'rgba(0,0,0,0.28)');
+    grad.addColorStop(0,'rgba(135,135,148,0.30)'); grad.addColorStop(1,'rgba(0,0,0,0.30)');
     g.fillStyle=grad; g.beginPath(); g.arc(x,y,rad,0,6.29); g.fill();
   }
+  // pitted speckle + a few bright mineral flecks for close-up detail
+  for(var i=0;i<4200;i++){ g.fillStyle='rgba(0,0,0,'+(Math.random()*0.22)+')'; g.fillRect(Math.random()*w,Math.random()*h,2,2); }
+  for(var j=0;j<500;j++){ g.fillStyle='rgba(220,220,235,'+(0.10+Math.random()*0.16)+')'; g.fillRect(Math.random()*w,Math.random()*h,1.6,1.6); }
   g.strokeStyle='rgba(0,0,0,0.5)';
-  for(var c2=0;c2<26;c2++){ g.beginPath(); var cx2=Math.random()*w,cy2=Math.random()*h; g.moveTo(cx2,cy2); g.lineTo(cx2+(Math.random()-0.5)*70,cy2+(Math.random()-0.5)*70); g.lineWidth=1; g.stroke(); }
+  for(var c2=0;c2<52;c2++){ g.beginPath(); var cx2=Math.random()*w,cy2=Math.random()*h; g.moveTo(cx2,cy2); g.lineTo(cx2+(Math.random()-0.5)*90,cy2+(Math.random()-0.5)*90); g.lineWidth=1.2; g.stroke(); }
 });
-var WOOD_TEX=makeTex(512,256,function(g,w,h){
-  g.fillStyle='#2a1c0d'; g.fillRect(0,0,w,h);
-  for(var i=0;i<46;i++){
+STONE_TEX._bump=2.4;
+var WOOD_TEX=makeTex(1024,512,function(g,w,h){
+  var base=g.createLinearGradient(0,0,0,h);
+  base.addColorStop(0,'#2e1e0e'); base.addColorStop(1,'#241708');
+  g.fillStyle=base; g.fillRect(0,0,w,h);
+  var rows=Math.floor(h/5.6);
+  for(var i=0;i<rows;i++){
     g.beginPath();
-    for(var x=0;x<=w;x+=16){ var y=i*5.6+Math.sin(x*0.02+i)*2.2; x===0?g.moveTo(x,y):g.lineTo(x,y); }
+    for(var x=0;x<=w;x+=12){ var y=i*5.6+Math.sin(x*0.02+i)*2.2; x===0?g.moveTo(x,y):g.lineTo(x,y); }
     g.strokeStyle='rgba('+(120+((i*37)%60))+','+(80+((i*23)%30))+',30,'+(0.16+(i%4)*0.05)+')'; g.lineWidth=1.6; g.stroke();
   }
+  // plank seams across the grain + a soft sheen band
+  for(var px=0;px<=w;px+=256){ g.fillStyle='rgba(0,0,0,0.55)'; g.fillRect(px-2,0,4,h);
+    g.fillStyle='rgba(255,220,150,0.10)'; g.fillRect(px+2,0,2,h); }
+  var sheen=g.createLinearGradient(0,0,0,h);
+  sheen.addColorStop(0,'rgba(255,235,190,0.06)'); sheen.addColorStop(0.5,'rgba(0,0,0,0)'); sheen.addColorStop(1,'rgba(0,0,0,0.10)');
+  g.fillStyle=sheen; g.fillRect(0,0,w,h);
 });
+WOOD_TEX._bump=1.0;
 function addCollider(x,z,w,d,id){
   var c={minX:x-w/2,maxX:x+w/2,minZ:z-d/2,maxZ:z+d/2,id:id||null};
   colliders.push(c); return c;
@@ -311,7 +377,7 @@ function makeScreen(x,y,z,ry,w,h,roomName){
   var g=el('a-entity',world,{position:x+' '+y+' '+z,rotation:'0 '+ry+' 0'});
   box(g,0,0,-0.06,w+0.35,h+0.35,0.12,GOLD,{metal:0.9,rough:0.25});
   var p=plane(g,0,0,0,w,h,0x000000,{rough:0.4,metal:0.1});
-  var canvas=document.createElement('canvas'); canvas.width=512; canvas.height=256;
+  var canvas=document.createElement('canvas'); canvas.width=1024; canvas.height=512;
   var scr={el:p,canvas:canvas,ctx:canvas.getContext('2d'),tex:null,mode:0,
            seed:Math.random()*1000,room:roomName,stars:[]};
   for(var i=0;i<110;i++) scr.stars.push({x:Math.random(),y:Math.random(),r:Math.random()*1.6+0.4,p:Math.random()*6.28});
@@ -326,7 +392,7 @@ function makeScreen(x,y,z,ry,w,h,roomName){
   return scr;
 }
 function drawScreen(scr,t){
-  var c=scr.ctx,W=512,H=256,mode=SCREEN_MODES[scr.mode],sd=scr.seed;
+  var c=scr.ctx,W=scr.canvas.width,H=scr.canvas.height,mode=SCREEN_MODES[scr.mode],sd=scr.seed;
   if(mode==='off'){ c.fillStyle='#000'; c.fillRect(0,0,W,H); }
   else if(mode==='gold'){
     c.fillStyle='#070502'; c.fillRect(0,0,W,H);
@@ -1042,11 +1108,29 @@ animProps.burner={on:false,glow:burnerGlow};
       var r=sceneEl2.renderer;
       if(r){ r.toneMapping=THREE.ACESFilmicToneMapping; r.toneMappingExposure=1.12;
              r.shadowMap.enabled=true; r.shadowMap.type=THREE.PCFSoftShadowMap; }
+      // v3: a soft generated environment (dark room, warm gold windows,
+      // one cool window) so the gold trim, marble and glass have real
+      // reflections to pick up instead of rendering flat black.
+      try{
+        var ec=document.createElement('canvas'); ec.width=512; ec.height=256;
+        var eg=ec.getContext('2d');
+        var grd=eg.createLinearGradient(0,0,0,256);
+        grd.addColorStop(0,'#3a2f16'); grd.addColorStop(0.5,'#0a0a0c'); grd.addColorStop(1,'#000000');
+        eg.fillStyle=grd; eg.fillRect(0,0,512,256);
+        eg.fillStyle='rgba(255,205,90,0.9)';
+        [60,180,300,420].forEach(function(x){ eg.fillRect(x,40,26,90); });
+        eg.fillStyle='rgba(160,210,255,0.55)'; eg.fillRect(240,30,40,70);
+        var envTex=new THREE.CanvasTexture(ec);
+        envTex.mapping=THREE.EquirectangularReflectionMapping;
+        envTex.colorSpace=THREE.SRGBColorSpace;
+        sceneEl2.object3D.environment=envTex;
+      }catch(e){ /* reflections are polish only */ }
       world.object3D.traverse(function(n){
         if(n.isMesh){
           n.receiveShadow=true;
           var m=n.material;
           if(m&&!m.transparent&&n.name!=='ceiling') n.castShadow=true;
+          if(m&&'envMapIntensity' in m) m.envMapIntensity=0.6;
           if(m) m.needsUpdate=true;
         }
       });
@@ -1064,22 +1148,36 @@ function audioInit(){
     var C=new (window.AudioContext||window.webkitAudioContext)();
     AE.ctx=C;
     AE.master=C.createGain(); AE.master.gain.value=0.9; AE.master.connect(C.destination);
-    // ambient pad: two soft detuned sines through a lowpass
-    var padGain=C.createGain(); padGain.gain.value=0.016;
-    var lp=C.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=420;
-    [110,164.8,220.5].forEach(function(f){
-      var o=C.createOscillator(); o.type='sine'; o.frequency.value=f;
-      o.connect(lp); o.start();
-    });
-    lp.connect(padGain); padGain.connect(AE.master);
-    // water loops: filtered noise per source, gain 0 until toggled
+    // v3: the old "ambient pad" — three always-on sine oscillators at
+    // 110 / 164.8 / 220.5 Hz — WAS the loud background buzzing Deezy
+    // reported. It is removed entirely. Ambience is now a very soft
+    // brown-noise room tone (sounds like quiet air, no pitch, no hum),
+    // low-passed and slowly breathing, far below everything else.
+    (function(){
+      var len=4*C.sampleRate, buf=C.createBuffer(1,len,C.sampleRate), d=buf.getChannelData(0), last=0;
+      for(var i=0;i<len;i++){ var wht=Math.random()*2-1; last=(last+0.02*wht)/1.02; d[i]=last*3.2; }
+      var src=C.createBufferSource(); src.buffer=buf; src.loop=true;
+      var lp=C.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=240;
+      var g=C.createGain(); g.gain.value=0.011;
+      var lfo=C.createOscillator(); lfo.type='sine'; lfo.frequency.value=0.07;
+      var lfoG=C.createGain(); lfoG.gain.value=0.004;
+      lfo.connect(lfoG); lfoG.connect(g.gain); lfo.start();
+      src.connect(lp); lp.connect(g); g.connect(AE.master); src.start();
+    })();
+    // water loops: filtered noise per source, gain 0 until toggled.
+    // v3: low-passed with a slowly wandering band so it sounds like
+    // moving water instead of a steady hiss.
     ['kitchen','jacuzzi','poolfall'].forEach(function(k){
       var len=2*C.sampleRate, buf=C.createBuffer(1,len,C.sampleRate), d=buf.getChannelData(0);
       for(var i=0;i<len;i++) d[i]=Math.random()*2-1;
       var src=C.createBufferSource(); src.buffer=buf; src.loop=true;
-      var bp=C.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=k==='poolfall'?600:900; bp.Q.value=0.6;
+      var lp2=C.createBiquadFilter(); lp2.type='lowpass'; lp2.frequency.value=k==='poolfall'?1400:1100;
+      var bp=C.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=k==='poolfall'?500:750; bp.Q.value=0.4;
+      var lfo=C.createOscillator(); lfo.type='sine'; lfo.frequency.value=k==='poolfall'?0.9:1.7;
+      var lfoG=C.createGain(); lfoG.gain.value=120;
+      lfo.connect(lfoG); lfoG.connect(bp.frequency); lfo.start();
       var g=C.createGain(); g.gain.value=0;
-      src.connect(bp); bp.connect(g); g.connect(AE.master); src.start();
+      src.connect(lp2); lp2.connect(bp); bp.connect(g); g.connect(AE.master); src.start();
       AE.waterGains[k]=g;
     });
     AE.on=true;
@@ -1090,7 +1188,7 @@ function setWaterSound(key,on){
   if(!AE.ctx||!AE.waterGains[key]) return;
   var g=AE.waterGains[key].gain, t=AE.ctx.currentTime;
   g.cancelScheduledValues(t); g.setValueAtTime(g.value,t);
-  g.linearRampToValueAtTime(on?0.11:0,t+0.4);
+  g.linearRampToValueAtTime(on?0.08:0,t+0.4);
 }
 function blip(freq,delay,dur,type,vol){
   if(!AE.ctx) return;
@@ -1102,7 +1200,7 @@ function blip(freq,delay,dur,type,vol){
   o.connect(g); g.connect(AE.master); o.start(t); o.stop(t+(dur||0.25)+0.05);
 }
 function chime(){ blip(880,0,0.3,'sine',0.05); blip(1318,0.09,0.4,'sine',0.045); }
-function clickSnd(){ blip(340,0,0.09,'square',0.03); }
+function clickSnd(){ blip(520,0,0.07,'triangle',0.022); }
 function bellSnd(){ blip(1568,0,0.5,'sine',0.06); blip(2093,0.12,0.6,'sine',0.05); }
 function whoosh(){
   if(!AE.ctx) return;
@@ -1123,7 +1221,7 @@ function stepSnd(){
   var g=C.createGain(); g.gain.value=0.05;
   src.connect(lp); lp.connect(g); g.connect(AE.master); src.start(t);
 }
-document.getElementById('soundBtn').addEventListener('click',function(){ audioInit(); toast('Sound on — ambient hum, water and chimes are live'); });
+document.getElementById('soundBtn').addEventListener('click',function(){ audioInit(); toast('Sound on — soft room tone, water and chimes are live'); });
 document.getElementById('scene').addEventListener('enter-vr',audioInit);
 document.getElementById('enterVrBtn').addEventListener('click',function(){
   audioInit();
@@ -1259,7 +1357,10 @@ function doAction(action,key,elm){
    Turning is SMOOTH and continuous (Deezy: "smooth, not the snap"),
    movement glides with eased velocity, and the desktop 1.6 m camera
    offset is zeroed in VR (local-floor tracking already carries his
-   real height) and restored on exit.                              */
+   real height) and restored on exit.
+   v3 FIX (Deezy: "I tried to go forward but I went backwards
+   instead. Like it was inverted."): the facing vector now comes
+   from the real THREE camera — see locomotion() below.           */
 addCollider(-9,2.4,2.6,3.2,'stairs-look-only');   // look down the stairs, don't fall in
 var rig=document.getElementById('rig'), cam=document.getElementById('cam');
 var sceneEl=document.getElementById('scene');
@@ -1283,6 +1384,10 @@ function readSticks(){
   function eat(gp,hand){
     if(!gp||!gp.axes||!gp.axes.length) return;
     var ax=0, ay=0;
+    /* xr-standard thumbstick: axes[2]=X (left -1 / right +1),
+       axes[3]=Y where NEGATIVE means pushed FORWARD (away from the
+       player) and positive means pulled back. So the forward input
+       is -axes[3]: push forward -> +1, pull back -> -1.            */
     if(gp.axes.length>=4){ ax=gp.axes[2]||0; ay=gp.axes[3]||0;
       if(!ax&&!ay&&(gp.axes[0]||gp.axes[1])){ ax=gp.axes[0]||0; ay=gp.axes[1]||0; } }
     else { ax=gp.axes[0]||0; ay=gp.axes[1]||0; }
@@ -1308,9 +1413,23 @@ function readSticks(){
   }
   return out;
 }
+var _camQuat=new THREE.Quaternion();
 function locomotion(dt){
   var fwd=new THREE.Vector3();
-  cam.object3D.getWorldDirection(fwd); fwd.y=0;
+  /* v3: WHY v2 FELT INVERTED — cam.object3D is the camera ENTITY's
+     Group, not the THREE camera itself (the PerspectiveCamera is a
+     child, getObject3D('camera')). Object3D.getWorldDirection()
+     returns the +Z axis in world space, which for a camera rig
+     points BEHIND the viewer; only Camera.getWorldDirection()
+     returns the -Z view direction. So v2's "forward" pointed
+     backward: pushing the stick forward walked him backward, and
+     strafing was mirrored too. v3 takes the real camera's world
+     quaternion and applies it to (0,0,-1) — the true facing —
+     then flattens it to the floor so looking up/down never
+     changes walking speed or direction.                          */
+  var camObj=sceneEl.camera||(cam.getObject3D?cam.getObject3D('camera'):null)||cam.object3D;
+  camObj.getWorldQuaternion(_camQuat);
+  fwd.set(0,0,-1).applyQuaternion(_camQuat); fwd.y=0;
   if(fwd.lengthSq()<0.001) fwd.set(0,0,-1);
   fwd.normalize();
   var right=new THREE.Vector3().crossVectors(fwd,new THREE.Vector3(0,1,0));
