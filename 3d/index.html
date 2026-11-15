@@ -11,7 +11,7 @@
   "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
 }}
 </script>
-<meta name="mansion-version" content="v4-2026-11-15-realism">
+<meta name="mansion-version" content="v5-2026-11-15-upgrade">
 <style>
   html,body{margin:0;padding:0;background:#000;font-family:Arial,Helvetica,sans-serif;}
   #hud{position:fixed;top:10px;left:10px;z-index:10;color:#f5d67b;background:rgba(0,0,0,.72);
@@ -38,14 +38,15 @@
   <div><b>Desktop:</b> W A S D to walk, mouse to look, click objects</div>
   <div style="margin-top:6px"><b>Try:</b> kitchen faucet &bull; wall screens &bull;
   bookshelf in the living room &bull; painting in the cinema &bull; kitchen counter &bull;
-  floor-rising TV &bull; dining table &bull; jacuzzi &bull; air-dry cylinder &bull; pool waterfall (already flowing)</div>
+  floor-rising TV &bull; fireplace &bull; opening glass dome &bull; Mansion TV console by the TV pit &bull; dining table &bull; jacuzzi &bull; air-dry cylinder &bull; pool waterfall (already flowing)</div>
   <div id="loadmsg">Loading real textures…</div>
 </div>
 <div id="toast"></div>
 <button id="soundBtn">&#128266; Sound: tap to enable</button>
+<button id="ytBtn" style="position:fixed;left:14px;bottom:64px;z-index:11;background:#3a0d0d;color:#ffb3ab;border:1px solid #c0392b;border-radius:10px;padding:10px 14px;font-size:15px;cursor:pointer">&#9654; YouTube (opens browser)</button>
 <button id="enterVrBtn">ENTER VR</button>
 
-<a-scene id="scene" renderer="antialias:true; colorManagement:true" vr-mode-ui="enabled:true" webxr="referenceSpaceType: local-floor; optionalFeatures: local-floor"
+<a-scene id="scene" renderer="antialias:true; colorManagement:true" vr-mode-ui="enabled:true" webxr="referenceSpaceType: local-floor; optionalFeatures: local-floor, hand-tracking"
          background="color:#050505" fog="type:linear; color:#050505; near:30; far:70">
   <a-entity id="rig" position="0 0 15.5">
     <a-entity id="cam" camera look-controls="pointerLockEnabled:true" position="0 1.6 0">
@@ -202,12 +203,13 @@ texMgr.onProgress=function(u,loaded,total){ setLoadMsg('Loading real textures…
 texMgr.onLoad=function(){ setLoadMsg('Textures ready — loading furniture models + HDRI light…'); };
 texMgr.onError=function(u){ setLoadMsg('A texture failed ('+u.split('/').pop()+') — world still works.'); };
 var texLoader=new THREE.TextureLoader(texMgr);
+var MAXANISO=16; try{ MAXANISO=Math.min(16, document.querySelector('a-scene').renderer.capabilities.getMaxAnisotropy()); }catch(e){}
 function loadTex(url,srgb,rx,ry){
   var t=texLoader.load(url);
   t.wrapS=t.wrapT=THREE.RepeatWrapping;
   if(rx||ry) t.repeat.set(rx||1,ry||1);
   if(srgb) t.colorSpace=THREE.SRGBColorSpace;
-  t.anisotropy=8;
+  t.anisotropy=MAXANISO;
   return t;
 }
 var PH='https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/';
@@ -225,7 +227,7 @@ var marbleMat=marbleMatFor(3,2.5);
 function panelMat(rx,ry,tint){
   var m=new THREE.MeshStandardMaterial({color:tint||0x8f8578,roughness:1.0,metalness:0.05,envMapIntensity:0.65});
   m.userData.keepEnv=true;
-  m.map=loadTex(PH+'dark_paneled_wood/dark_paneled_wood_diff_1k.jpg',true,rx,ry);
+  m.map=loadTex(PH+'dark_paneled_wood/dark_paneled_wood_diff_2k.jpg',true,rx,ry);
   m.normalMap=loadTex(PH+'dark_paneled_wood/dark_paneled_wood_nor_gl_1k.jpg',false,rx,ry);
   m.roughnessMap=loadTex(PH+'dark_paneled_wood/dark_paneled_wood_rough_1k.jpg',false,rx,ry);
   m.aoMap=loadTex(PH+'dark_paneled_wood/dark_paneled_wood_ao_1k.jpg',false,rx,ry);
@@ -255,7 +257,7 @@ function woodMatFor(rx,ry,tint){
 function rockMatFor(rx,ry,tint){
   var m=new THREE.MeshStandardMaterial({color:tint||0x8a8a8a,roughness:1.0,metalness:0.0,envMapIntensity:0.45});
   m.userData.keepEnv=true;
-  m.map=loadTex(PH+'dark_rock/dark_rock_diff_1k.jpg',true,rx,ry);
+  m.map=loadTex(PH+'dark_rock/dark_rock_diff_2k.jpg',true,rx,ry);
   m.normalMap=loadTex(PH+'dark_rock/dark_rock_nor_gl_1k.jpg',false,rx,ry);
   m.roughnessMap=loadTex(PH+'dark_rock/dark_rock_rough_1k.jpg',false,rx,ry);
   return m;
@@ -723,15 +725,21 @@ CUR='foyer';
     mesh(new THREE.CylinderGeometry(0.45,0.45,0.24,14),goldMat,px,0.12,pz,0,0,0,PO);
   });});
   rug(PO,0,15,7,6);
-  /* chandelier: stem + gold ring + candle globes */
+  /* chandelier: stem + gold ring + candle globes (v5: real dimmer light) */
   cyl(P,0,4.82,15,0.03,0.03,0.4,GOLD,{});
-  el('a-sphere',P,{position:'0 4.32 15',radius:0.34,material:'color:#ffd95e; emissive:#ffbf3f; emissiveIntensity:1.2'});
+  var chandCenter=el('a-sphere',P,{position:'0 4.32 15',radius:0.34,material:'color:#ffd95e; emissive:#ffbf3f; emissiveIntensity:1.2'});
   for(var ci=0;ci<8;ci++){
     var ang=ci/8*6.283;
     el('a-sphere',P,{position:(Math.cos(ang)*0.62)+' 4.02 '+(15+Math.sin(ang)*0.62),
       radius:0.09,material:'color:#ffe9a8; emissive:#ffbf3f; emissiveIntensity:1'});
   }
   el('a-torus',P,{position:'0 4.05 15',radius:1.05,tube:0.05,rotation:'90 0 0',material:'color:#c9a227; metalness:0.95; roughness:0.2; emissive:#c9a227; emissiveIntensity:0.35'});
+  var chandLight=new THREE.PointLight(0xffd9a0,1.1,13,1.6);
+  chandLight.position.set(0,4.1,15); PO.add(chandLight);
+  animProps.chandelier={level:1,light:chandLight,center:chandCenter};
+  var chandKnob=el('a-sphere',P,{position:'1.8 1.35 19.55',radius:0.08,
+    material:'color:#ffd95e; emissive:#c9a227; emissiveIntensity:0.8; metalness:0.9; roughness:0.2'});
+  makeInteractable(chandKnob,'chandelier','Foyer chandelier — dim / brighten');
   lightPool(PO,0,15,3.2,0.55);
   /* planters (real plant models land here via the model loader) */
   [-4.6,4.6].forEach(function(px){
@@ -781,6 +789,42 @@ CUR='living';
   promptSign(P,0,2.6,3.9,'\u25B6 FLOOR TV',0);
   animProps.tv={group:g,y:-1.7,target:-1.7,up:0.15,down:-1.7,on:false};
 })();
+/* ================= FIREPLACE (v5, living-room east wall) ================= */
+(function(){
+  var P=G('living'), PO=GO('living');
+  mesh(new THREE.BoxGeometry(0.55,1.15,2.3),panelMatC(1,1,0x6a6156),5.62,0.575,5,0,0,0,PO);
+  mesh(new THREE.BoxGeometry(0.62,0.09,2.5),goldMat,5.62,1.2,5,0,0,0,PO);
+  mesh(new THREE.BoxGeometry(0.62,0.14,2.5),goldMat,5.62,0.07,5,0,0,0,PO);
+  mesh(new THREE.BoxGeometry(0.08,0.78,1.5),new THREE.MeshStandardMaterial({color:0x070302,roughness:1}),5.32,0.45,5,0,0,0,PO);
+  var logMat=new THREE.MeshStandardMaterial({color:0x2a1808,roughness:0.95});
+  [[5.28,0.16,4.8],[5.28,0.16,5.2],[5.28,0.3,5.0]].forEach(function(lp){
+    mesh(new THREE.CylinderGeometry(0.07,0.07,0.95,8),logMat,lp[0],lp[1],lp[2],Math.PI/2,0,0,PO);
+  });
+  var fcvs=document.createElement('canvas'); fcvs.width=fcvs.height=256;
+  var fx=fcvs.getContext('2d');
+  var grd=fx.createRadialGradient(128,190,8,128,150,120);
+  grd.addColorStop(0,'rgba(255,240,190,1)'); grd.addColorStop(0.35,'rgba(255,160,40,0.85)');
+  grd.addColorStop(0.7,'rgba(220,70,10,0.4)'); grd.addColorStop(1,'rgba(120,20,0,0)');
+  fx.fillStyle=grd; fx.beginPath(); fx.ellipse(128,150,80,120,0,0,6.29); fx.fill();
+  var fTex=new THREE.CanvasTexture(fcvs);
+  var flameMat=new THREE.MeshBasicMaterial({map:fTex,transparent:true,opacity:0.95,
+    blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide});
+  var fl1=mesh(new THREE.PlaneGeometry(0.95,1.0),flameMat,5.26,0.55,5,0,0,0,PO);
+  var fl2=mesh(new THREE.PlaneGeometry(0.95,1.0),flameMat,5.26,0.55,5,0,Math.PI/2,0,PO);
+  fl1.visible=fl2.visible=false;
+  var emberMat=new THREE.MeshBasicMaterial({map:fTex,transparent:true,opacity:0.7,
+    blending:THREE.AdditiveBlending,depthWrite:false});
+  var emb=mesh(new THREE.PlaneGeometry(1.3,0.8),emberMat,5.28,0.1,5,-Math.PI/2,0,0,PO);
+  emb.visible=false;
+  var fpLight=new THREE.PointLight(0xff8c3a,0,9,1.6); fpLight.position.set(4.9,0.9,5); PO.add(fpLight);
+  animProps.fireplace={on:false,flames:[fl1,fl2],flameMat:flameMat,ember:emb,emberMat:emberMat,light:fpLight};
+  var fpKnob=el('a-sphere',P,{position:'5.3 1.35 6.4',radius:0.08,
+    material:'color:#ffd95e; emissive:#c9a227; emissiveIntensity:0.8; metalness:0.9; roughness:0.2'});
+  makeInteractable(fpKnob,'fireplace','Fireplace — light it / put it out');
+  promptSign(P,5.1,2.3,6.6,'\u25B6 FIREPLACE',-90);
+  addCollider(5.62,5,0.85,2.5);
+})();
+
 /* Bookshelf secret door — fills the living<->sim gap on z=0, hinge west */
 var bookshelfPivot;
 (function(){
@@ -865,11 +909,14 @@ CUR='kitchen';
   kRipple.setAttribute('visible','false');
   waters.kitchen={on:false,visuals:[kStream,kRipple],label:'Kitchen faucet'};
   /* stove burner (extra touchable, as v3) */
-  var burnerGlow=cyl(P,-17.2,1.21,3.4,0.32,0.32,0.02,0xff5a1f,{opacity:0.0,emissive:0xff5a1f,ei:1});
+  var burnerGlows=[];
+  [[-17.42,3.05,0.17],[-16.98,3.05,0.13],[-17.42,3.75,0.13],[-16.98,3.75,0.17]].forEach(function(bp){
+    burnerGlows.push(cyl(P,bp[0],1.21,bp[1],bp[2],bp[2],0.02,0xff5a1f,{opacity:0.0,emissive:0xff5a1f,ei:1}));
+  });
   var burnerKnob=el('a-sphere',P,{position:'-16.6 1.05 2.6',radius:0.07,
     material:'color:#ffd95e; emissive:#c9a227; emissiveIntensity:0.8; metalness:0.9'});
-  makeInteractable(burnerKnob,'burner','Stove — burner on / off');
-  animProps.burner={on:false,glow:burnerGlow};
+  makeInteractable(burnerKnob,'burner','Stove — all four burners on / off');
+  animProps.burner={on:false,glows:burnerGlows};
 })();
 /* Secret counter block covering the stair hole — slides west */
 (function(){
@@ -915,12 +962,17 @@ CUR='dining';
     var leg=box(g,l[0],0.39,l[1],0.14,0.78,0.14,GOLD,{metal:0.9});
     applyPBR(leg,goldMat);
   });
-  /* candelabras on the table */
+  /* candelabras on the table (v5: flickering flames, toggleable) */
+  animProps.candleFlames=[]; animProps.candlesOn=true;
   for(var cd=0;cd<3;cd++){
     var cb=cyl(g,-1.3+cd*1.3,1.15,0,0.05,0.09,0.55,GOLD,{metal:0.95,emissive:0xff9d2e,ei:0.5});
     applyPBR(cb,goldMat);
-    el('a-sphere',g,{position:(-1.3+cd*1.3)+' 1.5 0',radius:0.035,material:'color:#ffe9a8; emissive:#ff9d2e; emissiveIntensity:1.6'});
+    var cflame=el('a-sphere',g,{position:(-1.3+cd*1.3)+' 1.5 0',radius:0.035,material:'color:#ffe9a8; emissive:#ff9d2e; emissiveIntensity:1.6'});
+    animProps.candleFlames.push(cflame);
   }
+  var candleKnob=el('a-sphere',g,{position:'2.05 0.95 0.95',radius:0.06,
+    material:'color:#ffd95e; emissive:#c9a227; emissiveIntensity:0.8; metalness:0.9'});
+  makeInteractable(candleKnob,'candles','Dining candles — flicker on / off');
   /* place settings: gold charger discs + red napkins (film accents) */
   [-1.6,0,1.6].forEach(function(off){
     [4.15,5.85].forEach(function(zz){
@@ -1016,12 +1068,22 @@ CUR='bedroom';
   var dome=mesh(new THREE.SphereGeometry(5,28,12,0,Math.PI*2,0,0.81),domeMat,-12,1.53,-15,0,0,0,PO);
   dome.castShadow=false;
   /* gold ribs hugging the glass (radii matched to the dome curve) */
-  el('a-torus',G('bedroom'),{position:'-12 5.5 -15',radius:2.95,tube:0.04,rotation:'90 0 0',
-    material:'color:#c9a227; metalness:0.95; roughness:0.2'});
-  el('a-torus',G('bedroom'),{position:'-12 6.1 -15',radius:1.95,tube:0.04,rotation:'90 0 0',
-    material:'color:#c9a227; metalness:0.95; roughness:0.2'});
-  el('a-sphere',G('bedroom'),{position:'-12 6.6 -15',radius:0.14,material:'color:#fff6d8; emissive:#ffe9a8; emissiveIntensity:1.3'});
+  var domeRib1=mesh(new THREE.TorusGeometry(2.95,0.04,10,56),goldMat,-12,5.5,-15,Math.PI/2,0,0,PO);
+  var domeRib2=mesh(new THREE.TorusGeometry(1.95,0.04,10,48),goldMat,-12,6.1,-15,Math.PI/2,0,0,PO);
+  var domeFinial=mesh(new THREE.SphereGeometry(0.14,14,10),new THREE.MeshStandardMaterial({color:0xfff6d8,emissive:0xffe9a8,emissiveIntensity:1.3}),-12,6.6,-15,0,0,0,PO);
   label(G('bedroom'),-12,4.3,-11,'GLASS DOME',5,'#a8d4f0',180);
+  /* v5: the dome cap really opens — hinged at the west rim, moonlight pours in */
+  var domePivot=new THREE.Group();
+  domePivot.position.set(-15.62,4.98,-15); PO.add(domePivot);
+  domePivot.attach(dome);
+  domePivot.attach(domeRib1); domePivot.attach(domeRib2); domePivot.attach(domeFinial);
+  var domeLight=new THREE.PointLight(0x9fc8ff,0,17,1.4);
+  domeLight.position.set(-12,7.6,-15); PO.add(domeLight);
+  animProps.dome={pivot:domePivot,open:0,target:0,light:domeLight,on:false};
+  var domeKnob=el('a-sphere',G('bedroom'),{position:'-12 4.5 -11.3',radius:0.09,
+    material:'color:#ffd95e; emissive:#c9a227; emissiveIntensity:0.8; metalness:0.9; roughness:0.2'});
+  makeInteractable(domeKnob,'dome','Glass dome — open / close');
+  promptSign(G('bedroom'),-12,4.95,-11.15,'\u25B6 DOME',0);
 })();
 
 /* ================= AQUARIUM BATHROOM =================
@@ -1169,6 +1231,8 @@ var holoSpinner;
       new THREE.MeshStandardMaterial({color:0x8fd8ff,transparent:true,opacity:0.32,roughness:0.05,metalness:0.2,envMapIntensity:1.4}),
       px,1.0,-17.8,0,0,0,PO);
     domeM.castShadow=false;
+    if(!animProps.podDomes) animProps.podDomes=[];
+    animProps.podDomes.push(domeM);
     mesh(new THREE.CylinderGeometry(1.05,1.05,0.24,18),goldMat,px,0.12,-17.8,0,0,0,PO);
     contactShadow(PO,px,-17.8,2.4,2.4,0.8);
     addCollider(px,-17.8,2,2);
@@ -1567,12 +1631,13 @@ function makeNoiseBuffer(seconds){
 function noiseSource(loopBuf){
   var s=AC.createBufferSource(); s.buffer=loopBuf; s.loop=true; return s;
 }
+var noiseBuf=null;
 function audioInit(){
   if(AC) return;
   try{
     AC=new (window.AudioContext||window.webkitAudioContext)();
     masterGain=AC.createGain(); masterGain.gain.value=0; masterGain.connect(AC.destination);
-    var buf=makeNoiseBuffer(3);
+    var buf=makeNoiseBuffer(3); noiseBuf=buf;
     /* room tone */
     var tSrc=noiseSource(buf), tFilt=AC.createBiquadFilter();
     tFilt.type='lowpass'; tFilt.frequency.value=320;
@@ -1583,7 +1648,11 @@ function audioInit(){
       var src=noiseSource(buf), f=AC.createBiquadFilter();
       f.type='bandpass'; f.frequency.value=(key==='poolfall'?900:1400); f.Q.value=0.6;
       var g=AC.createGain(); g.gain.value=0;
-      src.connect(f); f.connect(g); g.connect(masterGain); src.start();
+      var pan=AC.createPanner(); pan.panningModel='HRTF'; pan.distanceModel='inverse';
+      pan.refDistance=2.2; pan.maxDistance=32; pan.rolloffFactor=0.9;
+      var PP={kitchen:[-14.5,1.2,0.95],jacuzzi:[-3.2,0.4,-16],poolfall:[12,1.6,-9.3]}[key];
+      pan.positionX.value=PP[0]; pan.positionY.value=PP[1]; pan.positionZ.value=PP[2];
+      src.connect(f); f.connect(g); g.connect(pan); pan.connect(masterGain); src.start();
       waterGains[key]=g;
     });
     /* soft VR pod hum: filtered noise, NOT a raw oscillator */
@@ -1610,6 +1679,46 @@ function playClick(freq){
     g.gain.setValueAtTime(0.12,AC.currentTime);
     g.gain.exponentialRampToValueAtTime(0.001,AC.currentTime+0.12);
     o.connect(g); g.connect(masterGain); o.start(); o.stop(AC.currentTime+0.13);
+  }catch(e){}
+}
+function playStep(){
+  if(!AC||!audioOn||!noiseBuf) return;
+  try{
+    var s=AC.createBufferSource(); s.buffer=noiseBuf; s.playbackRate.value=0.7+Math.random()*0.2;
+    var f=AC.createBiquadFilter(); f.type='lowpass'; f.frequency.value=420;
+    var g=AC.createGain(); var t0=AC.currentTime;
+    g.gain.setValueAtTime(0.0001,t0);
+    g.gain.exponentialRampToValueAtTime(0.13,t0+0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001,t0+0.11);
+    s.connect(f); f.connect(g); g.connect(masterGain);
+    s.start(t0,Math.random()*2,0.13); s.stop(t0+0.14);
+  }catch(e){}
+}
+var fireGain=null, fireSrc=null, fireBuf=null;
+function fireSound(on){
+  if(!AC||!audioOn) return;
+  try{
+    if(on){
+      if(fireSrc){ fireGain.gain.setTargetAtTime(0.5,AC.currentTime,0.4); return; }
+      var startFire=function(buf){
+        fireBuf=buf;
+        fireSrc=AC.createBufferSource(); fireSrc.buffer=buf; fireSrc.loop=true;
+        var f=AC.createBiquadFilter(); f.type='lowpass'; f.frequency.value=3800;
+        fireGain=AC.createGain(); fireGain.gain.value=0;
+        var pan=AC.createPanner(); pan.panningModel='HRTF'; pan.refDistance=1.6; pan.maxDistance=20;
+        pan.positionX.value=5.3; pan.positionY.value=0.8; pan.positionZ.value=5;
+        fireSrc.connect(f); f.connect(fireGain); fireGain.connect(pan); pan.connect(masterGain);
+        fireSrc.start();
+        fireGain.gain.setTargetAtTime(0.5,AC.currentTime,0.5);
+      };
+      if(fireBuf) startFire(fireBuf);
+      else fetch('https://upload.wikimedia.org/wikipedia/commons/0/01/WWS_Fireoftheforge.ogg')
+        .then(function(r){ return r.arrayBuffer(); })
+        .then(function(ab){ return AC.decodeAudioData(ab); })
+        .then(startFire).catch(function(){});
+    } else if(fireGain){
+      fireGain.gain.setTargetAtTime(0,AC.currentTime,0.3);
+    }
   }catch(e){}
 }
 function playChime(){
@@ -1650,6 +1759,126 @@ document.getElementById('scene').addEventListener('loaded',function(){
     ent.addEventListener('click',function(){ doAction(ent); });
   });
 });
+/* ================= MANSION TV — REAL VIDEO PLAYER (v5) =================
+   One shared <video> feeds the living-room floor TV and the cinema
+   screen through a THREE.VideoTexture. Sources: free videos from
+   Wikimedia Commons (CORS-clean, CC-licensed — see the asset
+   CATALOG). A live YouTube page CANNOT be rendered inside a WebXR
+   world on Quest (no DOM-to-texture / webview API exists) — the red
+   button opens the real YouTube in the browser instead. No fake UI. */
+var VID_CHANNELS=[
+  {title:'Fireplace — Cozy Hearth', src:'https://upload.wikimedia.org/wikipedia/commons/transcoded/b/bb/Fantastic-fireplace-fire-chimney-hearth-_background_-_texture_-_motion_graphics_-_free_video_library.webm/Fantastic-fireplace-fire-chimney-hearth-_background_-_texture_-_motion_graphics_-_free_video_library.webm.720p.vp9.webm'},
+  {title:'Aquarium — Barcelona', src:'https://upload.wikimedia.org/wikipedia/commons/6/67/Barcelona_Aquarium_%28video%29.webm'},
+  {title:'Tabletop Fire Pit', src:'https://upload.wikimedia.org/wikipedia/commons/6/6d/Video_of_tabletop_fireplace_%28or_fire_pit%29_burning_with_removed_limiter_grid_-_don%27t_try_this_at_home%2C_just_for_demo.webm'}
+];
+var vidEl=null, vidTex=null, vidIdx=0;
+var vidCardCvs=document.createElement('canvas'); vidCardCvs.width=1024; vidCardCvs.height=576;
+(function(){
+  var c=vidCardCvs.getContext('2d');
+  c.fillStyle='#0a0a0c'; c.fillRect(0,0,1024,576);
+  c.strokeStyle='#c9a227'; c.lineWidth=10; c.strokeRect(14,14,996,548);
+  c.fillStyle='#ffd95e'; c.font='bold 64px Georgia,serif'; c.textAlign='center';
+  c.fillText("DEEZY'S MANSION TV",512,120);
+  c.fillStyle='#e8e2d2'; c.font='30px Georgia,serif';
+  c.fillText('In-world video player — real videos, played right here',512,180);
+  c.font='34px Georgia,serif'; c.textAlign='left';
+  VID_CHANNELS.forEach(function(ch,i){ c.fillStyle='#ffd95e'; c.fillText('\u25B6  '+ch.title,90,268+i*62); });
+  c.fillStyle='#b8b2a2'; c.font='25px Georgia,serif'; c.textAlign='center';
+  c.fillText('Gold console by the floor TV:  previous \u00B7 play / pause \u00B7 next',512,492);
+  c.fillText('Real YouTube lives in the browser — use the red OPEN YOUTUBE button.',512,530);
+})();
+var vidCardTex=new THREE.CanvasTexture(vidCardCvs); vidCardTex.colorSpace=THREE.SRGBColorSpace;
+var vidMat=new THREE.MeshBasicMaterial({map:vidCardTex});
+var vidPlaneTV=mesh(new THREE.PlaneGeometry(2.45,1.28),vidMat,0,1.15,0.085,0,0,0,animProps.tv.group.object3D);
+var vidPlaneCinema=mesh(new THREE.PlaneGeometry(8.3,2.92),vidMat,-12,2.6,-9.76,0,0,0,GO('cinema'));
+vidPlaneTV.visible=false; vidPlaneCinema.visible=false;
+function initVideo(){
+  if(vidEl) return;
+  vidEl=document.createElement('video');
+  vidEl.crossOrigin='anonymous'; vidEl.loop=true; vidEl.playsInline=true; vidEl.preload='auto';
+  vidEl.src=VID_CHANNELS[vidIdx].src;
+  vidTex=new THREE.VideoTexture(vidEl); vidTex.colorSpace=THREE.SRGBColorSpace;
+  vidEl.addEventListener('playing',function(){ vidMat.map=vidTex; vidMat.needsUpdate=true; });
+}
+function vidShow(){ vidPlaneTV.visible=true; vidPlaneCinema.visible=true; }
+function vidPlayPause(){
+  initVideo(); vidShow();
+  if(vidEl.paused){
+    var p=vidEl.play(); if(p&&p.catch) p.catch(function(){ showToast('Video could not load — check the connection'); });
+    showToast('Mansion TV: '+VID_CHANNELS[vidIdx].title);
+  } else { vidEl.pause(); showToast('Mansion TV paused'); }
+}
+function vidStep(d){
+  initVideo(); vidShow();
+  vidIdx=(vidIdx+d+VID_CHANNELS.length)%VID_CHANNELS.length;
+  vidEl.src=VID_CHANNELS[vidIdx].src;
+  var p=vidEl.play(); if(p&&p.catch) p.catch(function(){});
+  showToast('Mansion TV: '+VID_CHANNELS[vidIdx].title);
+}
+(function(){
+  var P=G('living');
+  var slab=box(P,0,0.16,4.45,3.6,0.32,0.7,0x14100a,{rough:0.4,metal:0.4});
+  applyPBR(slab,goldMat);
+  addCollider(0,4.45,3.7,0.8);
+  var bPrev=el('a-sphere',P,{position:'-1.2 0.52 4.45',radius:0.11,material:'color:#ffd95e; emissive:#c9a227; emissiveIntensity:0.9; metalness:0.9; roughness:0.2'});
+  makeInteractable(bPrev,'vidprev','Mansion TV — previous video');
+  var bPlay=el('a-sphere',P,{position:'0 0.52 4.45',radius:0.13,material:'color:#ffe9a8; emissive:#ffbf3f; emissiveIntensity:1.1; metalness:0.9; roughness:0.2'});
+  makeInteractable(bPlay,'vidplay','Mansion TV — play / pause');
+  var bNext=el('a-sphere',P,{position:'1.2 0.52 4.45',radius:0.11,material:'color:#ffd95e; emissive:#c9a227; emissiveIntensity:0.9; metalness:0.9; roughness:0.2'});
+  makeInteractable(bNext,'vidnext','Mansion TV — next video');
+  var ytBtn3d=box(P,2.75,0.52,4.45,0.85,0.3,0.5,0x8c1d12,{rough:0.4,emissive:0x8c1d12,ei:0.35});
+  makeInteractable(ytBtn3d,'ytopen','Open YouTube — in the browser (leaves the VR view)');
+  label(P,2.75,1.25,4.45,'OPEN YOUTUBE (BROWSER)',3.4,'#ff8a7a',0);
+  promptSign(P,0,1.35,4.5,'\u25B6 MANSION TV',0);
+  var cPlay=el('a-sphere',G('cinema'),{position:'-12 1.0 -8.2',radius:0.13,material:'color:#ffe9a8; emissive:#ffbf3f; emissiveIntensity:1.1; metalness:0.9; roughness:0.2'});
+  makeInteractable(cPlay,'vidplay','Mansion TV — play / pause (same video as the living room)');
+  var ytDom=document.getElementById('ytBtn');
+  if(ytDom) ytDom.addEventListener('click',function(){ window.open('https://www.youtube.com','_blank'); });
+})();
+/* ================= PARTICLES (v5): dust, waterfall droplets, embers ================= */
+function makePoints(parent,n,size,color,opacity){
+  var geo=new THREE.BufferGeometry();
+  var pos=new Float32Array(n*3);
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  var mat=new THREE.PointsMaterial({size:size,color:color,transparent:true,opacity:opacity,
+    depthWrite:false,blending:THREE.AdditiveBlending,sizeAttenuation:true});
+  var pts=new THREE.Points(geo,mat); pts.frustumCulled=false;
+  parent.add(pts);
+  return {pts:pts,pos:pos,attr:geo.getAttribute('position')};
+}
+animProps.dustSys=[];
+[['foyer',90,-5,5,0.3,4.6,10.5,19.5],['living',90,-5.5,5.5,0.3,4.4,0.5,9.5]].forEach(function(cfg){
+  var s=makePoints(GO(cfg[0]),cfg[1],0.035,0xffe9b0,0.5);
+  s.base=new Float32Array(cfg[1]*3); s.ph=new Float32Array(cfg[1]);
+  for(var i=0;i<cfg[1];i++){
+    s.base[i*3]=cfg[2]+Math.random()*(cfg[3]-cfg[2]);
+    s.base[i*3+1]=cfg[4]+Math.random()*(cfg[5]-cfg[4]);
+    s.base[i*3+2]=cfg[6]+Math.random()*(cfg[7]-cfg[6]);
+    s.ph[i]=Math.random()*6.28;
+  }
+  s.pos.set(s.base); s.attr.needsUpdate=true;
+  animProps.dustSys.push(s);
+});
+animProps.drops=(function(){
+  var s=makePoints(GO('pool'),110,0.05,0xbfe6ff,0.75);
+  for(var i=0;i<110;i++){
+    s.pos[i*3]=12+(Math.random()-0.5)*1.9;
+    s.pos[i*3+1]=0.2+Math.random()*3.2;
+    s.pos[i*3+2]=-9.4+(Math.random()-0.5)*0.7;
+  }
+  s.attr.needsUpdate=true; return s;
+})();
+animProps.embers=(function(){
+  var s=makePoints(GO('living'),36,0.045,0xffa040,0.9);
+  for(var i=0;i<36;i++){
+    s.pos[i*3]=5.26+(Math.random()-0.5)*0.5;
+    s.pos[i*3+1]=0.3+Math.random()*1.3;
+    s.pos[i*3+2]=5+(Math.random()-0.5)*0.9;
+  }
+  s.attr.needsUpdate=true; s.pts.visible=false; return s;
+})();
+var stepState={x:null,z:null,acc:0};
+
 /* ================= ACTIONS (ported from v3) ================= */
 var podLight=el('a-light',world,{type:'point',color:'#7ad0ff',intensity:1.4,distance:14,position:'12 3.4 -15'});
 function doAction(ent){
@@ -1741,8 +1970,42 @@ function doAction(ent){
   }
   else if(action==='burner'){
     var bn=animProps.burner; bn.on=!bn.on;
-    bn.glow.setAttribute('material','opacity:'+(bn.on?'0.85':'0'));
-    showToast('Stove burner '+(bn.on?'ON — careful, hot':'off'));
+    bn.glows.forEach(function(gl){ gl.setAttribute('material','opacity:'+(bn.on?'0.85':'0')); });
+    showToast('Stove burners '+(bn.on?'ON — careful, hot':'off'));
+  }
+  else if(action==='dome'){
+    var dm=animProps.dome; if(!dm) return;
+    dm.on=!dm.on; dm.target=dm.on?1:0;
+    showToast(dm.on?'The dome opens — moonlight pours in':'Dome closed');
+  }
+  else if(action==='fireplace'){
+    var fp=animProps.fireplace; if(!fp) return;
+    fp.on=!fp.on;
+    fp.flames.forEach(function(f2){ f2.visible=fp.on; });
+    fp.ember.visible=fp.on;
+    if(animProps.embers) animProps.embers.pts.visible=fp.on;
+    if(!fp.on) fp.light.intensity=0;
+    fireSound(fp.on);
+    showToast(fp.on?'Fireplace lit — real crackle, loudest by the sofa':'Fireplace out');
+  }
+  else if(action==='candles'){
+    animProps.candlesOn=!animProps.candlesOn;
+    (animProps.candleFlames||[]).forEach(function(cf){ cf.setAttribute('visible',animProps.candlesOn?'true':'false'); });
+    showToast('Dining candles '+(animProps.candlesOn?'lit':'out'));
+  }
+  else if(action==='chandelier'){
+    var ch=animProps.chandelier; if(!ch) return;
+    ch.level=(ch.level+1)%3;
+    ch.light.intensity=[0.25,1.1,2.1][ch.level];
+    ch.center.setAttribute('material','emissiveIntensity:'+([0.4,1.2,2.0][ch.level]));
+    showToast('Chandelier: '+(['dim','warm','bright'][ch.level]));
+  }
+  else if(action==='vidplay'){ vidPlayPause(); }
+  else if(action==='vidnext'){ vidStep(1); }
+  else if(action==='vidprev'){ vidStep(-1); }
+  else if(action==='ytopen'){
+    window.open('https://www.youtube.com','_blank');
+    showToast('YouTube opens in the browser — a live web page cannot render inside a VR world');
   }
 }
 document.getElementById('enterVrBtn').addEventListener('click',function(){
@@ -1845,6 +2108,60 @@ function frameStep(t,deltaMs){
       });
     }
   }
+  /* --- v5 props: dome, candles, fireplace, pods, particles --- */
+  var dmv=animProps.dome;
+  if(dmv&&dmv.open!==dmv.target){
+    dmv.open+=(dmv.target-dmv.open)*Math.min(1,dt*1.8);
+    if(Math.abs(dmv.target-dmv.open)<0.01) dmv.open=dmv.target;
+    dmv.pivot.rotation.z=1.85*dmv.open;
+    dmv.light.intensity=2.3*dmv.open;
+  }
+  if(animProps.candleFlames&&animProps.candlesOn){
+    animProps.candleFlames.forEach(function(cf,ci2){
+      cf.setAttribute('material','emissiveIntensity:'+(1.45+0.45*Math.sin(t*0.02+ci2*1.7)+0.2*Math.sin(t*0.047+ci2*2.3)).toFixed(2));
+    });
+  }
+  var fpv=animProps.fireplace;
+  if(fpv&&fpv.on){
+    fpv.light.intensity=1.5+0.5*Math.sin(t*0.011)+0.3*Math.sin(t*0.023+1.3);
+    var fsc=1+0.1*Math.sin(t*0.017);
+    fpv.flames.forEach(function(fl3){ fl3.scale.set(1,fsc,1); });
+    fpv.emberMat.opacity=0.55+0.25*Math.sin(t*0.009);
+  }
+  if(animProps.podDomes){
+    var pdOn=animProps.podsOn;
+    animProps.podDomes.forEach(function(pdm){
+      pdm.material.emissive=new THREE.Color(0x1a5a80);
+      pdm.material.emissiveIntensity=pdOn?(0.55+0.3*Math.sin(t*0.003)):0.05;
+    });
+  }
+  if(animProps.dustSys){
+    animProps.dustSys.forEach(function(ds){
+      for(var di=0;di<ds.ph.length;di++){
+        ds.pos[di*3]=ds.base[di*3]+Math.sin(t*0.00021+ds.ph[di])*0.35;
+        ds.pos[di*3+1]=ds.base[di*3+1]+Math.sin(t*0.00034+ds.ph[di]*1.7)*0.22;
+        ds.pos[di*3+2]=ds.base[di*3+2]+Math.cos(t*0.00017+ds.ph[di])*0.35;
+      }
+      ds.attr.needsUpdate=true;
+    });
+  }
+  if(animProps.drops&&waters.poolfall&&waters.poolfall.on){
+    var dp=animProps.drops;
+    for(var dri=0;dri<dp.pos.length/3;dri++){
+      dp.pos[dri*3+1]-=dt*1.7;
+      if(dp.pos[dri*3+1]<0.12){ dp.pos[dri*3+1]=3.35; dp.pos[dri*3]=12+(Math.random()-0.5)*1.9; }
+    }
+    dp.attr.needsUpdate=true;
+  }
+  if(animProps.embers&&animProps.embers.pts.visible){
+    var ep=animProps.embers;
+    for(var ei2=0;ei2<ep.pos.length/3;ei2++){
+      ep.pos[ei2*3+1]+=dt*0.55;
+      ep.pos[ei2*3]+=Math.sin(t*0.004+ei2)*dt*0.12;
+      if(ep.pos[ei2*3+1]>1.75){ ep.pos[ei2*3+1]=0.3; ep.pos[ei2*3]=5.26+(Math.random()-0.5)*0.5; ep.pos[ei2*3+2]=5+(Math.random()-0.5)*0.9; }
+    }
+    ep.attr.needsUpdate=true;
+  }
   /* --- room visibility (only nearby rooms draw) --- */
   if(t-lastVisCheck>250){
     lastVisCheck=t;
@@ -1920,6 +2237,26 @@ function frameStep(t,deltaMs){
   /* house bounds */
   rig.object3D.position.x=Math.max(-17.2,Math.min(17.2,rig.object3D.position.x));
   rig.object3D.position.z=Math.max(-19.2,Math.min(19.2,rig.object3D.position.z));
+  /* --- v5: per-room environment swap follows the visibility cell
+     (bedroom / bathroom / pool get the moonlit-night reflections) --- */
+  if(window.__envSwap) window.__envSwap((pcx===-1&&pcz===0)||(pcx===0&&pcz===0)||(pcx===1&&pcz===1));
+  /* --- v5: spatial-audio listener tracks the headset; soft footsteps --- */
+  if(AC&&AC.listener&&camObj){
+    var _wp=new THREE.Vector3(); camObj.getWorldPosition(_wp);
+    var _wd=new THREE.Vector3(); camObj.getWorldDirection(_wd);
+    var L=AC.listener;
+    if(L.positionX){
+      L.positionX.value=_wp.x; L.positionY.value=_wp.y; L.positionZ.value=_wp.z;
+      L.forwardX.value=_wd.x; L.forwardY.value=0; L.forwardZ.value=_wd.z;
+      L.upX.value=0; L.upY.value=1; L.upZ.value=0;
+    }
+  }
+  var _rp=rig.object3D.position;
+  if(stepState.x===null){ stepState.x=_rp.x; stepState.z=_rp.z; }
+  var _mdx=_rp.x-stepState.x, _mdz=_rp.z-stepState.z;
+  var _mdist=Math.sqrt(_mdx*_mdx+_mdz*_mdz);
+  stepState.x=_rp.x; stepState.z=_rp.z;
+  if(_mdist>0.0005){ stepState.acc+=_mdist; if(stepState.acc>1.85){ stepState.acc=0; playStep(); } }
   /* keep the camera at eye height (local-floor handles real height in VR) */
   if(!session||!sceneEl.is('vr-mode')) cam.setAttribute('position','0 1.6 0');
 }
@@ -1955,22 +2292,30 @@ const sceneEl = document.getElementById('scene');
 const PHM = 'https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/';
 const setMsg = window.__setLoadMsg || function(){};
 
+let warmRT = null, nightRT = null, envNight = null;
 function applyEnvironment(){
   try{
     const renderer = sceneEl.renderer;
     const pmrem = new THREE.PMREMGenerator(renderer);
-    new RGBELoader().load(
-      'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/warm_restaurant_night_1k.hdr',
-      (hdr)=>{
+    const loadEnv = (url, isNight)=>{
+      new RGBELoader().load(url, (hdr)=>{
         try{
           const rt = pmrem.fromEquirectangular(hdr);
-          sceneEl.object3D.environment = rt.texture;
+          if(isNight){ nightRT = rt.texture; }
+          else { warmRT = rt.texture; sceneEl.object3D.environment = rt.texture; }
           hdr.dispose && hdr.dispose();
         }catch(e){ /* lights still carry the scene */ }
-      },
-      undefined,
-      ()=>{ /* HDRI failed — lights still carry the scene */ }
-    );
+      }, undefined, ()=>{ /* HDRI failed — lights still carry the scene */ });
+    };
+    loadEnv('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/warm_restaurant_night_1k.hdr', false);
+    loadEnv('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/moonlit_golf_1k.hdr', true);
+    /* classic script calls this as the player crosses room cells:
+       bedroom / bathroom / pool get moonlit-night reflections */
+    window.__envSwap = (night)=>{
+      if(envNight === night) return; envNight = night;
+      const target = night ? (nightRT || warmRT) : warmRT;
+      if(target) sceneEl.object3D.environment = target;
+    };
   }catch(e){ /* non-fatal */ }
 }
 
@@ -2028,7 +2373,14 @@ async function buildModels(){
     placeModel(PHM + 'potted_plant_01/potted_plant_01_1k.gltf', 'foyer', -4.6, 11, 1.05, 0.4),
     placeModel(PHM + 'potted_plant_01/potted_plant_01_1k.gltf', 'foyer',  4.6, 11, 1.05, 2.2),
     placeModel(PHM + 'potted_plant_01/potted_plant_01_1k.gltf', 'pool', 8.3, -8.6, 0.95, 1.1),
-    placeModel(PHM + 'potted_plant_01/potted_plant_01_1k.gltf', 'pool', 15.7, -8.6, 0.95, 2.8)
+    placeModel(PHM + 'potted_plant_01/potted_plant_01_1k.gltf', 'pool', 15.7, -8.6, 0.95, 2.8),
+    /* v5 additions: leafier plants, foyer vases, side table, cinema sofa */
+    placeModel(PHM + 'potted_plant_02/potted_plant_02_1k.gltf', 'living', -5.2, 1.4, 0.9, 0.7),
+    placeModel(PHM + 'potted_plant_02/potted_plant_02_1k.gltf', 'living', 5.2, 8.8, 0.9, 2.4),
+    placeModel(PHM + 'ceramic_vase_01/ceramic_vase_01_1k.gltf', 'foyer', -2.6, 18.5, 0.55, 0.3),
+    placeModel(PHM + 'ceramic_vase_01/ceramic_vase_01_1k.gltf', 'foyer', 2.6, 18.5, 0.55, 1.9),
+    placeModel(PHM + 'side_table_01/side_table_01_1k.gltf', 'living', 2.7, 7.7, 0.55, 0.4),
+    placeModel(PHM + 'sofa_02/sofa_02_1k.gltf', 'cinema', -12, -5.6, 2.7, Math.PI)
   ];
   await Promise.allSettled(jobs);
   setMsg('Ready — tap ENTER VR. The pool waterfall is already flowing.');
