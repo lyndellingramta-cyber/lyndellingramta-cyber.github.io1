@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Deezy's Mansion — Interactive 3D VR World</title>
+<script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+<style>
+  html,body{margin:0;padding:0;background:#000;font-family:Arial,Helvetica,sans-serif;}
+  #hud{position:fixed;top:10px;left:10px;z-index:10;color:#f5d67b;background:rgba(0,0,0,.72);
+       border:1px solid #c9a227;border-radius:10px;padding:10px 12px;max-width:330px;font-size:13px;line-height:1.45;}
+  #hud h1{font-size:15px;margin:0 0 6px 0;color:#ffd95e;}
+  #hud b{color:#ffe9a8;}
+  #toast{position:fixed;left:50%;bottom:88px;transform:translateX(-50%);z-index:10;color:#111;
+         background:#ffd95e;border-radius:20px;padding:8px 18px;font-size:14px;font-weight:bold;
+         opacity:0;transition:opacity .25s;pointer-events:none;max-width:86vw;text-align:center;}
+  #enterVrBtn{position:fixed;right:14px;bottom:14px;z-index:11;background:#c9a227;color:#000;border:none;
+         border-radius:10px;padding:14px 22px;font-size:16px;font-weight:bold;cursor:pointer;}
+  #soundBtn{position:fixed;left:14px;bottom:14px;z-index:11;background:#222;color:#ffd95e;border:1px solid #c9a227;
+         border-radius:10px;padding:12px 16px;font-size:14px;cursor:pointer;}
+  .a-enter-vr{bottom:70px !important;}
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <h1>DEEZY'S MANSION — 3D VR WORLD</h1>
+  <div><b>Move:</b> left thumbstick &nbsp; <b>Turn:</b> right thumbstick left/right</div>
+  <div><b>Interact:</b> point at a glowing gold object + pull <b>trigger</b></div>
+  <div><b>Desktop:</b> W A S D to walk, mouse to look, click objects</div>
+  <div style="margin-top:6px"><b>Try:</b> kitchen faucet &bull; wall screens (change the walls) &bull;
+  bookshelf in the living room &bull; painting in the cinema &bull; kitchen counter &bull;
+  floor-rising TV &bull; dining table &bull; jacuzzi &bull; air-dry cylinder &bull; pool waterfall</div>
+</div>
+<div id="toast"></div>
+<button id="soundBtn">&#128266; Sound: tap to enable</button>
+<button id="enterVrBtn">ENTER VR</button>
+
+<a-scene id="scene" renderer="antialias:true; colorManagement:true" vr-mode-ui="enabled:true"
+         background="color:#050505" fog="type:linear; color:#050505; near:30; far:70">
+  <a-entity id="rig" position="0 0 15.5">
+    <a-entity id="cam" camera look-controls="pointerLockEnabled:true" position="0 1.6 0">
+      <a-entity id="reticle" position="0 0 -1.2"
+                geometry="primitive:ring; radiusInner:0.008; radiusOuter:0.014"
+                material="color:#ffd95e; shader:flat; transparent:true; opacity:0.9"
+                visible="false"></a-entity>
+    </a-entity>
+    <a-entity id="handL" laser-controls="hand:left"
+              raycaster="objects:.interactable; far:40; showLine:true"
+              line="color:#ffd95e; opacity:0.55"></a-entity>
+    <a-entity id="handR" laser-controls="hand:right"
+              raycaster="objects:.interactable; far:40; showLine:true"
+              line="color:#ffd95e; opacity:0.55"></a-entity>
+  </a-entity>
+  <a-entity cursor="rayOrigin:mouse; fuse:false" raycaster="objects:.interactable; far:60"></a-entity>
+
+  <a-light type="ambient" color="#8a7a4a" intensity="0.55"></a-light>
+  <a-light type="hemisphere" color="#ffe9a8" groundColor="#1a1405" intensity="0.35"></a-light>
+  <a-light type="point" color="#ffd95e" intensity="0.9" distance="22" position="0 3.4 15"></a-light>
+  <a-light type="point" color="#ffd95e" intensity="0.8" distance="22" position="0 3.4 5"></a-light>
+  <a-light type="point" color="#ffd95e" intensity="0.8" distance="22" position="-12 3.4 -5"></a-light>
+  <a-light type="point" color="#7ad0ff" intensity="0.7" distance="20" position="12 3.2 -5"></a-light>
+  <a-light type="point" color="#ffd95e" intensity="0.8" distance="22" position="0 3.4 -15"></a-light>
+
+  <a-entity id="world"></a-entity>
+</a-scene>
+
+<script>
+'use strict';
+/* ============================================================
+   DEEZY'S MANSION — interactive 3D VR world (A-Frame / WebXR)
+   Rooms are modeled in 3D. Walls are screens. Secrets open.
+   ============================================================ */
+var GOLD=0xc9a227, GOLD_L=0xffd95e, BLACK=0x0a0a0a, WALLC=0x141310, FLOORC=0x111111,
+    WATER=0x2e9fd8, WHITE=0xf5f5f5;
+var world=document.getElementById('world');
+var colliders=[];           // {minX,maxX,minZ,maxZ, id}
+var interactables=[];       // entities with actions
+var screens=[];             // screen-wall objects
+var fishes=[];              // aquarium + glass-floor fish
+var animProps={};           // animated props state
+var waters={};              // water visual state by key
+
+function el(tag,parent,attrs){
+  var e=document.createElement(tag);
+  for(var k in attrs) e.setAttribute(k,attrs[k]);
+  (parent||world).appendChild(e); return e;
+}
+function box(parent,x,y,z,w,h,d,color,opts){
+  opts=opts||{};
+  var e=el('a-box',parent,{position:x+' '+y+' '+z,width:w,height:h,depth:d,
+    material:'color:#'+color.toString(16).padStart(6,'0')+'; roughness:'+(opts.rough!==undefined?opts.rough:0.65)+
+             '; metalness:'+(opts.metal!==undefined?opts.metal:0.25)+
+             (opts.opacity!==undefined?'; transparent:true; opacity:'+opts.opacity:'')+
+             (opts.emissive?'; emissive:#'+opts.emissive.toString(16).padStart(6,'0')+'; emissiveIntensity:'+(opts.ei||0.6):'')});
+  return e;
+}
+function cyl(parent,x,y,z,rT,rB,h,color,opts){
+  opts=opts||{};
+  var e=el('a-cylinder',parent,{position:x+' '+y+' '+z,'radius-top':rT,'radius-bottom':rB,height:h,
+    'open-ended':!!opts.open,material:'color:#'+color.toString(16).padStart(6,'0')+
+    '; roughness:'+(opts.rough!==undefined?opts.rough:0.4)+'; metalness:'+(opts.metal!==undefined?opts.metal:0.3)+
+    (opts.opacity!==undefined?'; transparent:true; opacity:'+opts.opacity+'; side:double':'')+
+    (opts.emissive?'; emissive:#'+opts.emissive.toString(16).padStart(6,'0')+'; emissiveIntensity:'+(opts.ei||0.6):'')});
+  return e;
+}
+function plane(parent,x,y,z,w,h,color,opts){
+  opts=opts||{};
+  var e=el('a-plane',parent,{position:x+' '+y+' '+z,width:w,height:h,
+    rotation:(opts.rx||0)+' '+(opts.ry||0)+' '+(opts.rz||0),
+    material:'color:#'+color.toString(16).padStart(6,'0')+'; roughness:'+(opts.rough!==undefined?opts.rough:0.7)+
+             '; metalness:'+(opts.metal!==undefined?opts.metal:0.15)+'; side:double'+
+             (opts.opacity!==undefined?'; transparent:true; opacity:'+opts.opacity:'')+
+             (opts.emissive?'; emissive:#'+opts.emissive.toString(16).padStart(6,'0')+'; emissiveIntensity:'+(opts.ei||0.5):'')});
+  return e;
+}
+function label(parent,x,y,z,text,scale,color,ry){
+  var e=el('a-text',parent,{position:x+' '+y+' '+z,value:text,align:'center',
+    color:color||'#ffd95e',width:scale||7,rotation:'0 '+(ry||0)+' 0','font':'roboto'});
+  return e;
+}
+function addCollider(x,z,w,d,id){
+  var c={minX:x-w/2,maxX:x+w/2,minZ:z-d/2,maxZ:z+d/2,id:id||null};
+  colliders.push(c); return c;
+}
+function removeCollider(c){
+  var i=colliders.indexOf(c); if(i>=0) colliders.splice(i,1);
+}
+/* A wall run along X or Z with an optional door gap (gap center + width). */
+function wallRun(x,z,len,alongX,gapC,gapW,h){
+  h=h||4;
+  function seg(cx,cz,l){
+    if(l<=0.05) return;
+    var w=alongX?l:0.3, d=alongX?0.3:l;
+    box(world,cx,h/2,cz,w,h,d,WALLC,{rough:0.85,metal:0.1});
+    // gold trim line near the top
+    box(world,cx,3.55,cz,alongX?l:0.34,0.07,alongX?0.34:l,GOLD,{metal:0.9,rough:0.25,emissive:GOLD,ei:0.25});
+    addCollider(cx,cz,w,d);
+  }
+  if(gapW===undefined||gapW===null){ seg(x,z,len); return; }
+  var start=-len/2, g0=gapC-gapW/2, g1=gapC+gapW/2;
+  var a0=start, a1=g0, b0=g1, b1=len/2;
+  if(alongX){ seg(x+(a0+a1)/2,z,a1-a0); seg(x+(b0+b1)/2,z,b1-b0); }
+  else     { seg(x,z+(a0+a1)/2,a1-a0); seg(x,z+(b0+b1)/2,b1-b0); }
+}
+/* Floor rectangle, optionally with one rectangular hole cut out. */
+function floorRect(cx,cz,w,d,color,hole){
+  var y=0.02;
+  if(!hole){ plane(world,cx,y,cz,w,d,color,{rx:-90,rough:0.35,metal:0.4}); return; }
+  var x0=cx-w/2,x1=cx+w/2,z0=cz-d/2,z1=cz+d/2;
+  var hx0=hole.x-hole.w/2,hx1=hole.x+hole.w/2,hz0=hole.z-hole.d/2,hz1=hole.z+hole.d/2;
+  function fr(fx0,fx1,fz0,fz1){
+    if(fx1-fx0<0.03||fz1-fz0<0.03) return;
+    plane(world,(fx0+fx1)/2,y,(fz0+fz1)/2,fx1-fx0,fz1-fz0,color,{rx:-90,rough:0.35,metal:0.4});
+  }
+  fr(x0,hx0,z0,z1); fr(hx1,x1,z0,z1); fr(hx0,hx1,z0,hz0); fr(hx0,hx1,hz1,z1);
+}
+function ceilRect(cx,cz,w,d,color){
+  plane(world,cx,4.02,cz,w,d,color||0x0d0d0f,{rx:90,rough:0.9,metal:0.05});
+}
+function rug(cx,cz,w,d,color){
+  plane(world,cx,0.045,cz,w,d,color||0x1c1607,{rx:-90,rough:0.95,metal:0});
+  plane(world,cx,0.05,cz,w-0.5,d-0.5,0x241b08,{rx:-90,rough:0.95,metal:0});
+}
+</script>
+
+<script>
+/* ================= FLOOR PLAN =================
+   Grid rooms (x centers / z centers), each 12 x 10 m, walls 4 m:
+   North row : Primary Bedroom(-12,-15) | Aquarium Bathroom(0,-15) | Game Room(12,-15)
+   Middle row: 4D Cinema(-12,-5)        | Secret Room(0,-5)        | Pool Grotto(12,-5)
+   South row : Kitchen(-12,5)           | Living Room(0,5)         | Dining Room(12,5)
+   Foyer(0,15) hangs off the living room to the south.            */
+wallRun(0,-20,36,true);                 // north exterior
+wallRun(-18,-5,30,false);               // west exterior
+wallRun(18,-5,30,false);                // east exterior
+wallRun(-12,10,12,true);                // kitchen south exterior
+wallRun(12,10,12,true);                 // dining south exterior
+wallRun(-6,15,10,false);                // foyer west
+wallRun(6,15,10,false);                 // foyer east
+wallRun(0,20,12,true,0,2.6);            // south exterior + front door gap
+wallRun(0,10,12,true,0,2.4);            // foyer <-> living door
+// vertical interior x=-6
+wallRun(-6,-15,10,false,0,2.2);         // bedroom <-> bathroom door
+wallRun(-6,-5,10,false,0,2.2);          // cinema <-> secret : PAINTING covers this gap
+wallRun(-6,5,10,false,0,2.2);           // kitchen <-> living door
+// vertical interior x=6
+wallRun(6,-15,10,false,0,2.2);          // bathroom <-> game door
+wallRun(6,-5,10,false,0,2.2);           // secret <-> pool door
+wallRun(6,5,10,false,0,2.2);            // living <-> dining door
+// horizontal interior z=-10
+wallRun(-12,-10,12,true,0,2.2);         // bedroom <-> cinema door
+wallRun(0,-10,12,true);                 // bathroom <-> secret (solid)
+wallRun(12,-10,12,true,0,2.2);          // game <-> pool door
+// horizontal interior z=0
+wallRun(-12,0,12,true,0,2.2);           // cinema <-> kitchen door
+wallRun(0,0,12,true,0,2.4);             // living <-> secret : BOOKSHELF covers this gap
+wallRun(12,0,12,true,0,2.2);            // pool <-> dining door
+
+/* Floors (with holes where things rise / drop / descend) */
+floorRect(-12,-15,12,10,0x16110a);                                        // bedroom
+floorRect(-3,-15,6,10,0x10151a,{x:-3.2,z:-16,w:3.4,d:2.6});               // bathroom W half + sunken jacuzzi hole
+floorRect(3,-15,6,10,0x10151a,{x:3,z:-13,w:3.6,d:3});                     // bathroom E half + aquarium glass-floor hole
+floorRect(12,-15,12,10,0x120e18);                                         // game room
+floorRect(-12,-5,12,10,0x0d0d12);                                         // cinema
+floorRect(0,-5,12,10,0x171205);                                           // secret room
+floorRect(12,-5,12,10,0x0e1a20,{x:12,z:-5,w:8,d:6});                      // pool grotto + basin hole
+floorRect(-12,5,12,10,0x141414,{x:-9,z:2.4,w:2.6,d:3.2});                 // kitchen + stair hole
+floorRect(0,5,12,10,0x151009,{x:0,z:3,w:3,d:1});                          // living + TV slot
+floorRect(12,5,12,10,0x16110a,{x:12,z:5,w:4.8,d:2.8});                    // dining + table pit
+floorRect(0,15,12,10,0x181207);                                           // foyer
+/* Ground far below the pits so nothing looks bottomless-black */
+plane(world,0,-2.6,0,60,60,0x060606,{rx:-90});
+
+/* Ceilings (bedroom gets the dome instead) */
+ceilRect(0,-15,12,10); ceilRect(12,-15,12,10); ceilRect(-12,-5,12,10);
+ceilRect(0,-5,12,10);  ceilRect(12,-5,12,10);  ceilRect(-12,5,12,10);
+ceilRect(0,5,12,10);   ceilRect(12,5,12,10);   ceilRect(0,15,12,10);
+
+/* Room labels */
+label(world,-12,3.35,-15,'PRIMARY BEDROOM',8);
+label(world,0,3.35,-15,'AQUARIUM BATHROOM',8);
+label(world,12,3.35,-15,'GAME ROOM',8);
+label(world,-12,3.35,-5,'4D CINEMA',8,'#ffd95e',0);
+label(world,0,3.35,-5,'SIMULATION ROOM',7);
+label(world,12,3.35,-5,'INDOOR POOL GROTTO',8);
+label(world,-12,3.35,5,'KITCHEN',8);
+label(world,0,3.35,5,'LIVING ROOM',8);
+label(world,12,3.35,5,'DINING ROOM',8);
+label(world,0,3.35,14,'GRAND FOYER',8);
+
+/* ================= SCREEN WALLS ================= */
+var SCREEN_MODES=['gold','rain','stars','waves','off'];
+var SCREEN_NAMES={gold:'Drifting Gold Patterns',rain:'Indoor Rain',stars:'Starfield',waves:'Gold Waves',off:'Off (black)'};
+function makeScreen(x,y,z,ry,w,h,roomName){
+  var g=el('a-entity',world,{position:x+' '+y+' '+z,rotation:'0 '+ry+' 0'});
+  box(g,0,0,-0.06,w+0.35,h+0.35,0.12,GOLD,{metal:0.9,rough:0.25});
+  var p=plane(g,0,0,0,w,h,0x000000,{rough:0.4,metal:0.1});
+  var canvas=document.createElement('canvas'); canvas.width=512; canvas.height=256;
+  var scr={el:p,canvas:canvas,ctx:canvas.getContext('2d'),tex:null,mode:0,
+           seed:Math.random()*1000,room:roomName,stars:[]};
+  for(var i=0;i<110;i++) scr.stars.push({x:Math.random(),y:Math.random(),r:Math.random()*1.6+0.4,p:Math.random()*6.28});
+  p.addEventListener('loaded',function(){
+    var mesh=p.getObject3D('mesh'); if(!mesh) return;
+    scr.tex=new THREE.CanvasTexture(canvas);
+    mesh.material.map=scr.tex; mesh.material.color.set(0xffffff); mesh.material.needsUpdate=true;
+  });
+  p.classList.add('interactable');
+  p.setAttribute('data-action','screen'); p.setAttribute('data-prompt','Change the wall screen');
+  p._screen=scr; screens.push(scr); interactables.push(p);
+  return scr;
+}
+function drawScreen(scr,t){
+  var c=scr.ctx,W=512,H=256,mode=SCREEN_MODES[scr.mode],sd=scr.seed;
+  if(mode==='off'){ c.fillStyle='#000'; c.fillRect(0,0,W,H); }
+  else if(mode==='gold'){
+    c.fillStyle='#070502'; c.fillRect(0,0,W,H);
+    for(var i=0;i<5;i++){
+      c.beginPath();
+      for(var x=0;x<=W;x+=8){
+        var y=H*0.5+Math.sin(x*0.012+t*0.0006+i*1.3+sd)*46*Math.sin(i+sd)+ (i-2)*26;
+        x===0?c.moveTo(x,y):c.lineTo(x,y);
+      }
+      c.strokeStyle='rgba(255,190,60,'+(0.5-i*0.07)+')'; c.lineWidth=2.4-i*0.3; c.stroke();
+    }
+    for(var j=0;j<40;j++){
+      var px=(j*97+sd*10+t*0.02*(1+j%3))%W, py=(j*57+sd*7)%H;
+      c.fillStyle='rgba(255,215,110,0.75)'; c.fillRect(px,py,2,2);
+    }
+  }
+  else if(mode==='rain'){
+    c.fillStyle='#04070d'; c.fillRect(0,0,W,H);
+    c.strokeStyle='rgba(150,200,255,0.65)'; c.lineWidth=1.4;
+    for(var k=0;k<90;k++){
+      var rx=(k*61+sd*13)%W, ry=((k*89+sd*7)+t*0.35*(1+k%3))%H;
+      c.beginPath(); c.moveTo(rx,ry); c.lineTo(rx-3,ry+13); c.stroke();
+    }
+    c.fillStyle='rgba(255,215,110,0.20)'; c.fillRect(0,H-16,W,2);
+  }
+  else if(mode==='stars'){
+    c.fillStyle='#010208'; c.fillRect(0,0,W,H);
+    for(var s=0;s<scr.stars.length;s++){
+      var st=scr.stars[s], tw=0.45+0.55*Math.abs(Math.sin(t*0.001+st.p));
+      c.fillStyle='rgba(255,240,200,'+tw+')';
+      c.beginPath(); c.arc(st.x*W,st.y*H,st.r,0,6.29); c.fill();
+    }
+    c.fillStyle='rgba(255,190,60,0.85)';
+    c.beginPath(); c.arc(W*0.78,H*0.26,13,0,6.29); c.fill();
+    c.fillStyle='rgba(1,2,8,0.9)';
+    c.beginPath(); c.arc(W*0.78+6,H*0.26-4,11,0,6.29); c.fill();
+  }
+  else if(mode==='waves'){
+    var grad=c.createLinearGradient(0,0,0,H);
+    grad.addColorStop(0,'#0a0601'); grad.addColorStop(1,'#1c1002');
+    c.fillStyle=grad; c.fillRect(0,0,W,H);
+    for(var wv=0;wv<26;wv++){
+      c.beginPath();
+      for(var xx=0;xx<=W;xx+=10){
+        var yy=wv*10+Math.sin(xx*0.02+t*0.0012+wv*0.7+sd)*7;
+        xx===0?c.moveTo(xx,yy):c.lineTo(xx,yy);
+      }
+      c.strokeStyle='rgba(255,'+(170+wv*3)+',60,'+(0.16+0.02*(wv%5))+')'; c.lineWidth=2; c.stroke();
+    }
+  }
+  if(scr.tex) scr.tex.needsUpdate=true;
+}
+makeScreen(-3.5,2,10.14,0,5,2.4,'Grand Foyer');
+makeScreen(-5.84,2,5,90,6,2.4,'Living Room');
+makeScreen(-12,2,9.84,180,6,2.4,'Kitchen');
+makeScreen(17.84,2,5,-90,6,2.4,'Dining Room');
+makeScreen(-12,2,-19.84,0,6,2.4,'Primary Bedroom');
+makeScreen(-2.5,2,-19.84,0,5,2.4,'Aquarium Bathroom');
+makeScreen(12,2,-19.84,0,6,2.4,'Game Room');
+makeScreen(-12,2.1,-9.84,0,8.5,3,'4D Cinema');
+makeScreen(15,2,-0.14,180,5,2.4,'Pool Grotto');
+makeScreen(0,2,-9.84,0,6,2.4,'Secret Room');
+</script>
+
+<script>
+/* ================= INTERACTION REGISTRY ================= */
+function makeInteractable(entity,action,prompt,key){
+  entity.classList.add('interactable');
+  entity.setAttribute('data-action',action);
+  entity.setAttribute('data-prompt',prompt);
+  if(key) entity.setAttribute('data-key',key);
+  interactables.push(entity); return entity;
+}
+function promptSign(x,y,z,text,ry){
+  label(world,x,y,z,text,2.6,'#ffd95e',ry||0);
+}
+
+/* ================= GRAND FOYER ================= */
+box(world,-0.66,1.5,20,1.28,3,0.18,0x1a1408,{metal:0.6,rough:0.35});
+box(world, 0.66,1.5,20,1.28,3,0.18,0x1a1408,{metal:0.6,rough:0.35});
+addCollider(0,20,2.6,0.35);
+cyl(world,-0.08,1.5,19.9,0.05,0.05,0.9,GOLD_L,{emissive:GOLD_L,ei:0.9});
+cyl(world, 0.08,1.5,19.9,0.05,0.05,0.9,GOLD_L,{emissive:GOLD_L,ei:0.9});
+[-4,4].forEach(function(px){ [-12,-18].forEach(function(pz){
+  cyl(world,px,2,pz===-12?12:18,0.32,0.36,4,0x1b1b1b,{rough:0.5});
+  cyl(world,px,3.9,pz===-12?12:18,0.45,0.45,0.22,GOLD,{metal:0.9});
+  cyl(world,px,0.12,pz===-12?12:18,0.45,0.45,0.24,GOLD,{metal:0.9});
+});});
+rug(0,15,7,6);
+cyl(world,0,3.85,15,0.03,0.03,0.4,GOLD,{});
+el('a-sphere',world,{position:'0 3.35 15',radius:0.34,material:'color:#ffd95e; emissive:#ffbf3f; emissiveIntensity:1.2'});
+for(var ci=0;ci<8;ci++){
+  var ang=ci/8*6.283;
+  el('a-sphere',world,{position:(Math.cos(ang)*0.62)+' 3.05 '+(15+Math.sin(ang)*0.62),
+    radius:0.09,material:'color:#ffe9a8; emissive:#ffbf3f; emissiveIntensity:1'});
+}
+label(world,0,2.2,19.7,'DEEZY\u2019S MANSION',6,'#ffd95e',180);
+
+/* ================= LIVING ROOM ================= */
+rug(0,6.2,8,5.5);
+// sofa facing the TV (north)
+box(world,0,0.45,7.6,4.6,0.5,1,0x191919,{rough:0.9});
+box(world,0,0.95,7.95,4.6,1.1,0.35,0x222222,{rough:0.9});
+box(world,-2.45,0.65,7.6,0.35,0.9,1,0x222222,{rough:0.9});
+box(world, 2.45,0.65,7.6,0.35,0.9,1,0x222222,{rough:0.9});
+box(world,-1.2,0.62,7.55,1.15,0.18,0.85,GOLD,{rough:0.6});
+box(world, 1.2,0.62,7.55,1.15,0.18,0.85,0x8a6d1f,{rough:0.6});
+box(world,0,0.28,5.9,2.2,0.5,1,GOLD,{metal:0.85,rough:0.3});   // coffee table
+addCollider(0,7.6,5.2,1.3); addCollider(0,5.9,2.2,1);
+// armchairs
+[-3.6,3.6].forEach(function(ax){
+  box(world,ax,0.45,6.4,1.1,0.5,1,0x1e1e1e,{rough:0.9});
+  box(world,ax,0.9,6.75,1.1,1,0.3,0x262626,{rough:0.9});
+  addCollider(ax,6.4,1.1,1.1);
+});
+/* Floor-rising TV — rises out of the slot in the floor at (0,3) */
+(function(){
+  var pit=el('a-entity',world,{position:'0 0 3'});
+  box(pit,0,-0.8,0,3.1,1.7,1.1,0x050505,{});
+  var g=el('a-entity',world,{position:'0 -1.7 3'});
+  box(g,0,0.25,0,2.9,0.5,0.22,GOLD,{metal:0.9,rough:0.3});
+  var scr=box(g,0,1.15,0,2.7,1.5,0.1,0x05070c,{emissive:0x1b3a55,ei:0.7});
+  plane(g,0,1.15,0.07,2.45,1.28,0x0d2233,{emissive:0x2e6ea8,ei:0.55});
+  makeInteractable(scr,'tv','Floor TV — raise / lower');
+  promptSign(0,2.6,3.9,'\u25B6 FLOOR TV',0);
+  animProps.tv={group:g,y:-1.7,target:-1.7,up:0.15,down:-1.7,on:false};
+})();
+/* Bookshelf secret door — fills the living<->secret gap on z=0, hinge on west edge */
+var bookshelfPivot;
+(function(){
+  bookshelfPivot=el('a-entity',world,{position:'-1.2 0 0'});
+  var g=el('a-entity',bookshelfPivot,{position:'1.2 0 0'});
+  box(g,0,1.7,0,2.4,3.4,0.34,0x241708,{rough:0.6});
+  var bookCols=[0x7a1f1f,0x1f3a7a,0xc9a227,0x2e5e2e,0x5e2e7a,0xb0b0b0,0x8a4a1f];
+  for(var r=0;r<3;r++){
+    box(g,0,0.75+r*0.95,0.2,2.2,0.06,0.3,GOLD,{metal:0.85});
+    for(var b=0;b<8;b++){
+      box(g,-0.95+b*0.27,1.12+r*0.95,0.2,0.2,0.72,0.2,bookCols[(b+r*3)%bookCols.length],{rough:0.8});
+    }
+  }
+  var knob=el('a-sphere',g,{position:'0.95 1.6 0.3',radius:0.07,
+    material:'color:#ffd95e; emissive:#c9a227; emissiveIntensity:0.7; metalness:0.9; roughness:0.2'});
+  makeInteractable(knob,'bookshelf','Bookshelf — pull to open the secret door');
+  // also make the shelf front clickable
+  var front=box(g,0,1.7,0.19,2.4,3.4,0.02,0x000000,{opacity:0.0});
+  makeInteractable(front,'bookshelf','Bookshelf — pull to open the secret door');
+  promptSign(0,3.8,0.7,'SECRET: THE BOOKSHELF',0);
+  animProps.bookshelf={pivot:bookshelfPivot,angle:0,target:0,open:false,
+                       collider:addCollider(0,0,2.5,0.5,'bookshelf')};
+})();
+
+/* ================= KITCHEN ================= */
+rug(-13,7.5,6,3.5,0x101010);
+// counters along north + west walls
+box(world,-14.5,0.55,0.95,5.4,1.1,1.1,0x181818,{rough:0.5});
+box(world,-14.5,1.13,0.95,5.5,0.08,1.2,0x2a2a2a,{rough:0.2,metal:0.6});
+box(world,-17.2,0.55,5,1.1,1.1,7,0x181818,{rough:0.5});
+box(world,-17.2,1.13,5,1.2,0.08,7.1,0x2a2a2a,{rough:0.2,metal:0.6});
+for(var cb=0;cb<4;cb++) box(world,-16+cb*1.15,2.6,0.55,1,1.6,0.7,0x1f1a10,{rough:0.6});
+addCollider(-14.5,0.95,5.5,1.2); addCollider(-17.2,5,1.2,7.1);
+// stove + hood
+box(world,-17.2,1.18,3.4,0.95,0.04,1.4,0x050505,{emissive:0x331a00,ei:0.4});
+box(world,-17.2,2.9,3.4,1,1,1,GOLD,{metal:0.85,rough:0.3});
+// island
+box(world,-13,0.55,6.8,3.4,1.1,1.6,0x1b1b1b,{rough:0.45});
+box(world,-13,1.14,6.8,3.6,0.08,1.8,0x303030,{rough:0.2,metal:0.6});
+addCollider(-13,6.8,3.6,1.8);
+[-14,-12].forEach(function(sx){ cyl(world,sx,0.35,8.2,0.09,0.09,0.7,GOLD,{metal:0.9}); box(world,sx,0.78,8.2,0.55,0.08,0.55,0x111111,{}); });
+/* faucet + sink (water toggle #1) */
+box(world,-14.5,1.16,0.95,1.7,0.05,0.95,0x0a0f14,{rough:0.15,metal:0.7});
+cyl(world,-14.5,1.45,0.62,0.045,0.045,0.55,GOLD,{metal:0.95,rough:0.15});
+var faucetArm=box(world,-14.5,1.72,0.85,0.09,0.09,0.55,GOLD,{metal:0.95,rough:0.15});
+var faucetKnob=el('a-sphere',world,{position:'-13.9 1.35 0.62',radius:0.09,
+  material:'color:#ffd95e; emissive:#c9a227; emissiveIntensity:0.8; metalness:0.9; roughness:0.2'});
+makeInteractable(faucetKnob,'water','Kitchen faucet — turn the water on / off','kitchen');
+promptSign(-14.5,2.5,1.6,'\u25B6 FAUCET',0);
+var kStream=cyl(world,-14.5,1.42,0.98,0.035,0.045,0.5,WATER,{opacity:0.75,emissive:WATER,ei:0.4});
+kStream.setAttribute('visible','false');
+var kRipple=cyl(world,-14.5,1.19,0.98,0.3,0.3,0.02,WATER,{opacity:0.5,emissive:WATER,ei:0.5});
+kRipple.setAttribute('visible','false');
+waters.kitchen={on:false,visuals:[kStream,kRipple],label:'Kitchen faucet'};
+/* Secret counter block covering the stair hole — slides west to reveal stairs */
+(function(){
+  var hole={x:-9,z:2.4};
+  // pit walls + steps descending southward, gold-lit tunnel door at the bottom
+  box(world,hole.x-1.35,-1.05,hole.z,0.1,2.1,3.3,0x0a0a0a,{});
+  box(world,hole.x+1.35,-1.05,hole.z,0.1,2.1,3.3,0x0a0a0a,{});
+  box(world,hole.x,-1.05,hole.z-1.65,2.8,2.1,0.1,0x0a0a0a,{});
+  for(var s=0;s<6;s++){
+    box(world,hole.x,-0.18-s*0.32,hole.z-1.25+s*0.5,2.5,0.16,0.55,s%2?0x2a2a2a:0x333333,{rough:0.4});
+    box(world,hole.x-1.15,-0.18-s*0.32,hole.z-1.25+s*0.5,0.08,0.05,0.5,GOLD_L,{emissive:GOLD_L,ei:0.9});
+  }
+  plane(world,hole.x,-2.08,hole.z+0.6,2.5,2.2,0x0c0c0c,{rx:-90});
+  var door=plane(world,hole.x,-1,hole.z+1.68,2,2,GOLD,{emissive:GOLD,ei:0.85,ry:180});
+  label(world,hole.x,-0.6,hole.z+1.6,'TO THE POOL GROTTO',3.4,'#000000',180);
+  // the counter block itself
+  var g=el('a-entity',world,{position:hole.x+' 0 '+hole.z});
+  var blockTop=box(g,0,0.58,0,2.6,1.16,3.2,0x1d1d1d,{rough:0.35});
+  box(g,0,1.2,0,2.7,0.08,3.3,0x353535,{rough:0.2,metal:0.6});
+  box(g,0,0.6,-1.62,2.6,0.9,0.05,GOLD,{metal:0.9,emissive:GOLD,ei:0.3});
+  makeInteractable(blockTop,'counter','Kitchen counter — slide it to reveal the stairs');
+  promptSign(hole.x,2.2,hole.z+2.3,'\u25B6 SECRET COUNTER',0);
+  animProps.counter={group:g,x:hole.x,target:hole.x,closedX:hole.x,openX:hole.x-3.1,open:false,
+                     collider:addCollider(hole.x,hole.z,2.7,3.3,'counter')};
+})();
+
+/* ================= DINING ROOM ================= */
+(function(){
+  // pit under the table
+  box(world,12,-0.8,5,4.9,1.6,2.9,0x050505,{});
+  plane(world,12,-1.58,5,4.8,2.8,0x090909,{rx:-90});
+  var g=el('a-entity',world,{position:'12 0 5'});
+  var top=box(g,0,0.78,0,4.4,0.14,2.4,0x241a08,{rough:0.3,metal:0.4});
+  [[-1.9,-1],[1.9,-1],[-1.9,1],[1.9,1]].forEach(function(l){
+    box(g,l[0],0.39,l[1],0.14,0.78,0.14,GOLD,{metal:0.9});
+  });
+  for(var cd=0;cd<3;cd++){
+    cyl(g,-1.3+cd*1.3,1.15,0,0.05,0.09,0.55,GOLD,{metal:0.95,emissive:0xff9d2e,ei:0.5});
+  }
+  makeInteractable(top,'table','Dining table — drop it into the floor / bring it back');
+  animProps.table={group:g,y:0,target:0,up:0,down:-1.5,on:true};
+  promptSign(12,2.4,7.6,'\u25B6 DROPPING TABLE',180);
+  // chairs
+  [-1.6,0,1.6].forEach(function(off){
+    [3.4,6.6].forEach(function(cz){
+      box(world,12+off,0.5,cz,0.85,0.55,0.85,0x1c1c1c,{rough:0.9});
+      box(world,12+off,1.05,cz+(cz<5?-0.4:0.4),0.85,1.15,0.14,0x242424,{rough:0.9});
+      addCollider(12+off,cz,0.9,0.9);
+    });
+  });
+  rug(12,5,7,5.5,0x140f06);
+})();
+</script>
+
+<script>
+/* ================= PRIMARY BEDROOM (dome ceiling) ================= */
+rug(-12,-15,8,6,0x180f04);
+// big bed
+box(world,-12,0.35,-17.5,4.6,0.7,3.2,0x1d1d1d,{rough:0.9});
+box(world,-12,0.85,-17.5,4.3,0.25,2.9,0xe8e0cc,{rough:0.95});
+box(world,-12,1.05,-18.6,4.6,1.7,0.3,GOLD,{metal:0.7,rough:0.35});
+box(world,-13.2,0.95,-17.9,1.7,0.22,0.8,0xffffff,{rough:0.95});
+box(world,-10.8,0.95,-17.9,1.7,0.22,0.8,0xffffff,{rough:0.95});
+addCollider(-12,-17.5,4.8,3.4);
+[-15,-9].forEach(function(nx){
+  box(world,nx,0.55,-18.8,1,1.1,0.7,0x241a08,{});
+  el('a-sphere',world,{position:nx+' 1.35 -18.8',radius:0.14,
+    material:'color:#ffe9a8; emissive:#ffbf3f; emissiveIntensity:1'});
+  addCollider(nx,-18.8,1,0.7);
+});
+// dresser + mirror
+box(world,-17,0.7,-13,1,1.4,3.4,0x20180c,{rough:0.6});
+plane(world,-16.45,2.4,-13,2.6,1.6,0x9fc4d8,{ry:90,rough:0.05,metal:0.9,opacity:0.85});
+addCollider(-17,-13,1.1,3.4);
+/* glass dome in the tall ceiling */
+(function(){
+  var dome=el('a-sphere',world,{position:'-12 4.1 -15',radius:4.6,
+    geometry:'thetaLength:80',material:'color:#a8d4f0; transparent:true; opacity:0.22; side:double; roughness:0.05; metalness:0.1'});
+  for(var r=0;r<3;r++){
+    el('a-torus',world,{position:'-12 '+(4.15+r*0.85)+' -15',radius:4.55-r*0.95,'tube':0.045,
+      rotation:'90 0 0',material:'color:#c9a227; metalness:0.95; roughness:0.2'});
+  }
+  el('a-sphere',world,{position:'-10 5.6 -17',radius:0.16,material:'color:#ffffff; emissive:#ffffff; emissiveIntensity:1.4'});
+  el('a-sphere',world,{position:'-14.5 6 -13',radius:0.12,material:'color:#ffe9a8; emissive:#ffffff; emissiveIntensity:1.2'});
+  el('a-sphere',world,{position:'-12 6.4 -15',radius:0.2,material:'color:#fff6d8; emissive:#ffe9a8; emissiveIntensity:1.3'});
+  label(world,-12,3.3,-11,'GLASS DOME',5,'#a8d4f0',180);
+})();
+
+/* ================= AQUARIUM BATHROOM =================
+   The aquarium IS the floor: fish swim under a glass floor you walk on.
+   The tub is a SUNKEN INDOOR JACUZZI recessed into the floor.
+   NO waterfall in this room — the only waterfall is at the pool.   */
+/* --- sunken indoor jacuzzi at (-3.2,-16) --- */
+var jacuzziWater, jacuzziBubbles=[];
+(function(){
+  var cx=-3.2, cz=-16;
+  // pit interior
+  box(world,cx,-0.85,cz,3.4,0.15,2.6,0x0a2530,{});
+  box(world,cx,-0.45,cz-1.28,3.4,0.95,0.08,0x0e3442,{});
+  box(world,cx,-0.45,cz+1.28,3.4,0.95,0.08,0x0e3442,{});
+  box(world,cx-1.68,-0.45,cz,0.08,0.95,2.6,0x0e3442,{});
+  box(world,cx+1.68,-0.45,cz,0.08,0.95,2.6,0x0e3442,{});
+  // gold rim at floor level + bench seat inside
+  box(world,cx,0.06,cz-1.36,3.7,0.1,0.14,GOLD,{metal:0.95,rough:0.2});
+  box(world,cx,0.06,cz+1.36,3.7,0.1,0.14,GOLD,{metal:0.95,rough:0.2});
+  box(world,cx-1.76,0.06,cz,0.14,0.1,2.85,GOLD,{metal:0.95,rough:0.2});
+  box(world,cx+1.76,0.06,cz,0.14,0.1,2.85,GOLD,{metal:0.95,rough:0.2});
+  box(world,cx,-0.35,cz+0.85,3.1,0.12,0.7,0x14506b,{});
+  // water surface (toggle)
+  jacuzziWater=plane(world,cx,-0.28,cz,3.2,2.4,WATER,{rx:-90,opacity:0.82,emissive:WATER,ei:0.35,rough:0.1});
+  jacuzziWater.setAttribute('visible','false');
+  for(var b=0;b<10;b++){
+    var bub=el('a-sphere',world,{position:(cx-1.3+ (b%5)*0.65)+' -0.2 '+(cz-0.8+Math.floor(b/5)*1.5),
+      radius:0.05,material:'color:#dff4ff; transparent:true; opacity:0.75; emissive:#7ad0ff; emissiveIntensity:0.4'});
+    bub.setAttribute('visible','false'); jacuzziBubbles.push(bub);
+  }
+  // gold spout on the west side pours into the jacuzzi
+  cyl(world,cx-1.85,0.75,cz,0.05,0.05,1.5,GOLD,{metal:0.95,rough:0.15});
+  box(world,cx-1.45,1.48,cz,0.85,0.09,0.09,GOLD,{metal:0.95,rough:0.15});
+  var spoutKnob=el('a-sphere',world,{position:(cx-1.85)+' 1.15 '+(cz+0.35),radius:0.09,
+    material:'color:#ffd95e; emissive:#c9a227; emissiveIntensity:0.8; metalness:0.9; roughness:0.2'});
+  makeInteractable(spoutKnob,'water','Sunken jacuzzi — turn the water on / off','jacuzzi');
+  promptSign(cx,2.3,cz+2.1,'\u25B6 JACUZZI',0);
+  var jStream=cyl(world,cx-1.05,1.05,cz,0.04,0.05,0.85,WATER,{opacity:0.75,emissive:WATER,ei:0.4});
+  jStream.setAttribute('visible','false');
+  waters.jacuzzi={on:false,visuals:[jStream,jacuzziWater].concat(jacuzziBubbles),label:'Sunken jacuzzi'};
+  // plumbing pipes: jacuzzi <-> aquarium floor system
+  var pipe=el('a-cylinder',world,{position:'-1.1 0.3 -14.2',rotation:'0 0 90',radius:0.07,height:3.6,
+    material:'color:#9a9a9a; metalness:0.9; roughness:0.25'});
+  label(world,-1.1,0.85,-14.2,'JACUZZI \u2194 AQUARIUM SYSTEM',4.4,'#7ad0ff',0);
+})();
+/* --- aquarium glass floor at (3,-13): fish UNDER the glass you walk on --- */
+(function(){
+  var cx=3, cz=-13;
+  box(world,cx,-1,cz,3.6,0.12,3,0x06222e,{});
+  box(world,cx,-0.55,cz-1.48,3.6,1,0.08,0x0a3040,{});
+  box(world,cx,-0.55,cz+1.48,3.6,1,0.08,0x0a3040,{});
+  box(world,cx-1.78,-0.55,cz,0.08,1,3,0x0a3040,{});
+  box(world,cx+1.78,-0.55,cz,0.08,1,3,0x0a3040,{});
+  var tankWater=box(world,cx,-0.5,cz,3.5,0.85,2.9,0x1a6ea8,{opacity:0.45,emissive:0x0d4a66,ei:0.5,rough:0.1});
+  // coral + rocks on the tank floor
+  for(var i=0;i<7;i++){
+    el('a-cone',world,{position:(cx-1.4+i*0.45)+' -0.8 '+(cz+(i%2?0.8:-0.7)),radius:0.14,height:0.4,
+      material:'color:#'+(i%2?'ff7a4d':'ffd95e')+'; roughness:0.8'});
+  }
+  // fish swimming under the glass
+  var fishCols=[0xffa726,0xffd95e,0x7ad0ff,0xff7a9e,0xb0ff7a];
+  for(var f=0;f<7;f++){
+    var fish=el('a-entity',world,{});
+    el('a-cone',fish,{position:'0 0 0',rotation:'0 0 -90',radius:0.07,height:0.34,
+      material:'color:#'+fishCols[f%5].toString(16).padStart(6,'0')+'; emissive:#'+fishCols[f%5].toString(16).padStart(6,'0')+'; emissiveIntensity:0.35'});
+    el('a-sphere',fish,{position:'0.05 0.03 0.05',radius:0.02,material:'color:#000000'});
+    fishes.push({el:fish,cx:cx,cz:cz,y:-0.45-(f%3)*0.14,r:0.9+(f%4)*0.22,
+                 sp:0.25+(f%3)*0.12,ph:f*0.9,underFloor:true});
+  }
+  // the glass you walk on + gold frame
+  plane(world,cx,0.055,cz,3.6,3,0xbfe8ff,{rx:-90,opacity:0.28,rough:0.05,metal:0.4});
+  box(world,cx,0.05,cz-1.56,3.85,0.07,0.13,GOLD,{metal:0.95});
+  box(world,cx,0.05,cz+1.56,3.85,0.07,0.13,GOLD,{metal:0.95});
+  box(world,cx-1.86,0.05,cz,0.13,0.07,3.25,GOLD,{metal:0.95});
+  box(world,cx+1.86,0.05,cz,0.13,0.07,3.25,GOLD,{metal:0.95});
+  label(world,cx,1.1,cz+2.2,'AQUARIUM FLOOR — WALK ON IT',5,'#7ad0ff',0);
+})();
+/* --- wall aquarium (the system tank, plumbed to jacuzzi + floor) --- */
+(function(){
+  var g=el('a-entity',world,{position:'-5.8 0 -12.5',rotation:'0 90 0'});
+  box(g,0,2,0,3.6,2,0.7,0x0a3040,{opacity:0.9});
+  box(g,0,2,0.1,3.3,1.7,0.5,0x1a6ea8,{opacity:0.5,emissive:0x0d4a66,ei:0.5});
+  box(g,0,3.1,0,3.8,0.12,0.85,GOLD,{metal:0.95});
+  box(g,0,0.9,0,3.8,0.12,0.85,GOLD,{metal:0.95});
+  for(var f=0;f<4;f++){
+    var fish=el('a-cone',g,{position:(-1.2+f*0.7)+' '+(2+(f%2)*0.5)+' 0.1',rotation:'0 0 -90',radius:0.06,height:0.3,
+      material:'color:#ffa726; emissive:#ff8f1f; emissiveIntensity:0.4'});
+    fishes.push({el:fish,cx:0,cz:0,y:0,r:0,wallTank:{g:g,baseX:-1.2+f*0.7,baseY:2+(f%2)*0.5,ph:f*1.4}});
+  }
+})();
+/* --- air-dry cylinder --- */
+var airDry={on:false,timer:null,streams:[]};
+(function(){
+  var cx=4.6, cz=-18.2;
+  cyl(world,cx,1.5,cz,0.85,0.85,3,0xbfe8ff,{opacity:0.22,open:true,rough:0.05});
+  cyl(world,cx,3.02,cz,0.9,0.9,0.1,GOLD,{metal:0.95});
+  cyl(world,cx,0.05,cz,0.9,0.9,0.1,GOLD,{metal:0.95});
+  for(var s=0;s<6;s++){
+    var st=cyl(world,cx+(s%3-1)*0.4,2.2,cz+(Math.floor(s/3)?0.4:-0.4),0.02,0.02,1.3,0xffffff,{opacity:0.0});
+    airDry.streams.push(st);
+  }
+  var btn=el('a-sphere',world,{position:(cx+1.15)+' 1.3 '+cz,radius:0.09,
+    material:'color:#ffd95e; emissive:#c9a227; emissiveIntensity:0.8; metalness:0.9; roughness:0.2'});
+  makeInteractable(btn,'airdry','Air-dry cylinder — step in and start the air');
+  promptSign(cx,3.6,cz,'\u25B6 AIR-DRY',0);
+  addCollider(cx,cz,0.4,0.4);
+})();
+// vanity + mirror
+box(world,-5.2,0.55,-19.3,1.4,1.1,0.9,0x1b1b1b,{});
+plane(world,-5.2,2.3,-19.8,1.3,1.3,0x9fc4d8,{rough:0.05,metal:0.9,opacity:0.85});
+addCollider(-5.2,-19.3,1.4,0.9);
+
+/* ================= FUTURISTIC GAME ROOM ================= */
+rug(12,-15,8,6,0x0d0a18);
+// VR pods
+[8.8,15.2].forEach(function(px){
+  cyl(world,px,0.5,-17.8,0.85,1,1,0x1a1a26,{rough:0.35,metal:0.6});
+  el('a-sphere',world,{position:px+' 1.75 -17.8',radius:0.78,
+    material:'color:#8fd8ff; transparent:true; opacity:0.35; roughness:0.05'});
+  cyl(world,px,0.12,-17.8,1.05,1.05,0.24,GOLD,{metal:0.9,emissive:GOLD,ei:0.35});
+  addCollider(px,-17.8,2,2);
+});
+label(world,12,2.9,-17.6,'VR PODS',4,'#8fd8ff',0);
+// curved screen (cylinder segment) — decorative, glows
+(function(){
+  var seg=el('a-cylinder',world,{position:'12 1.9 -11.2',radius:3.4,height:2.4,'open-ended':true,
+    'theta-start':200,'theta-length':110,
+    material:'color:#0d2233; emissive:#2e6ea8; emissiveIntensity:0.6; side:double; roughness:0.3'});
+})();
+// holographic game table with a rotating hologram
+var holoSpinner;
+(function(){
+  cyl(world,12,0.55,-14.5,1.5,1.7,1.1,0x14141f,{metal:0.7,rough:0.3});
+  holoSpinner=el('a-entity',world,{position:'12 2.1 -14.5'});
+  el('a-cone',holoSpinner,{position:'0 0.3 0',radius:0.5,height:1,
+    material:'color:#7ad0ff; transparent:true; opacity:0.5; emissive:#2e9fd8; emissiveIntensity:0.9'});
+  el('a-torus',holoSpinner,{position:'0 -0.3 0',radius:0.75,tube:0.03,rotation:'90 0 0',
+    material:'color:#ffd95e; emissive:#c9a227; emissiveIntensity:0.9'});
+  addCollider(12,-14.5,3.2,3.2);
+  promptSign(12,3.3,-12.6,'HOLO GAMES',0);
+})();
+// gaming chairs
+[9.5,14.5].forEach(function(gx){
+  box(world,gx,0.5,-12.3,1,0.6,1,0x191924,{rough:0.8});
+  box(world,gx,1.1,-11.9,1,1.3,0.25,0x22222f,{rough:0.8});
+  addCollider(gx,-12.3,1,1);
+});
+
+/* ================= 4D CINEMA ================= */
+// seats (3 rows)
+for(var row=0;row<3;row++){
+  for(var st2=0;st2<5;st2++){
+    var sx=-15.6+st2*1.8, sz=-2.6+row*1.5;
+    box(world,sx,0.45,sz,1.3,0.55,1,0x2a0f14,{rough:0.95});
+    box(world,sx,1,sz+0.45,1.3,1.2,0.28,0x38121a,{rough:0.95});
+    addCollider(sx,sz,1.3,1.1);
+  }
+}
+// projector beam
+el('a-cone',world,{position:'-12 3 -1.4',rotation:'-90 0 0',radius:1.6,height:7,
+  material:'color:#ffe9a8; transparent:true; opacity:0.10; side:double'});
+box(world,-12,3.3,-0.8,0.7,0.4,0.7,0x111111,{});
+label(world,-12,0.9,-0.6,'4D CINEMA — SEATS SHAKE (IN THE MOVIES)',6.5,'#ffd95e',180);
+/* Painting secret door — covers the cinema<->secret gap on x=-6 at z=-5, hinge at z=-6.1 */
+(function(){
+  var pivot=el('a-entity',world,{position:'-6.15 0 -6.1'});
+  var g=el('a-entity',pivot,{});
+  var frame=box(g,0,1.8,1.1,0.14,2.8,2.2,GOLD,{metal:0.9,rough:0.25});
+  var art=plane(g,-0.09,1.8,1.1,1.95,2.5,0x3a2a08,{ry:-90,emissive:0x8a6d1f,ei:0.4});
+  // simple gold-art: sun disc + rays painted as extra small planes
+  var sun=cyl(g,-0.12,2.1,1.1,0.4,0.4,0.03,GOLD_L,{emissive:GOLD_L,ei:0.9});
+  sun.setAttribute('rotation','0 0 90');
+  makeInteractable(frame,'painting','The big painting — push it open');
+  makeInteractable(art,'painting','The big painting — push it open');
+  promptSign(-7,3.6,-5,'\u25B6 SECRET: THE PAINTING',-90);
+  animProps.painting={pivot:pivot,angle:0,target:0,open:false,
+                      collider:addCollider(-6,-5,0.5,2.3,'painting')};
+})();
+
+/* ================= INDOOR POOL GROTTO =================
+   The mansion's ONLY waterfall lives here. */
+(function(){
+  var cx=12, cz=-5;
+  // basin interior + water
+  box(world,cx,-1.05,cz,8,0.12,6,0x0a2e3d,{});
+  box(world,cx,-0.5,cz-3.02,8,1.1,0.08,0x0e4258,{});
+  box(world,cx,-0.5,cz+3.02,8,1.1,0.08,0x0e4258,{});
+  box(world,cx-4.02,-0.5,cz,0.08,1.1,6,0x0e4258,{});
+  box(world,cx+4.02,-0.5,cz,0.08,1.1,6,0x0e4258,{});
+  var pw=plane(world,cx,-0.35,cz,7.9,5.9,0x1a7ac8,{rx:-90,opacity:0.88,emissive:0x0d5a86,ei:0.55,rough:0.08});
+  waters.pool={on:true,visuals:[],label:'Pool water',always:true};
+  // lazy-river ring painted on the water
+  el('a-torus',world,{position:'12 -0.3 -5',radius:2.1,tube:0.05,rotation:'90 0 0',
+    material:'color:#ffd95e; emissive:#c9a227; emissiveIntensity:0.5; transparent:true; opacity:0.7'});
+  // rock grotto wall at the north end + WATERFALL (toggle)
+  for(var rk=0;rk<6;rk++){
+    el('a-dodecahedron',world,{position:(8.6+rk*1.35)+' '+(0.4+(rk%2)*0.5)+' -9.4',radius:0.75+(rk%3)*0.25,
+      material:'color:#3a3a3a; roughness:0.95'});
+  }
+  var fall=cyl(world,12,1.5,-9.2,1.5,1.5,3,0x9fd8ff,{opacity:0.0,open:true});
+  var fallSheet=plane(world,12,1.6,-9.15,2.6,3.1,0x9fd8ff,{opacity:0.55,emissive:0x2e9fd8,ei:0.5,rough:0.1});
+  fallSheet.setAttribute('visible','false');
+  var fallFoam=cyl(world,12,-0.25,-8.9,1.3,1.3,0.12,0xdff4ff,{opacity:0.0,emissive:0x7ad0ff,ei:0.4});
+  fallFoam.setAttribute('visible','false');
+  var fallBtn=el('a-sphere',world,{position:'9.2 1.3 -8.6',radius:0.1,
+    material:'color:#ffd95e; emissive:#c9a227; emissiveIntensity:0.85; metalness:0.9; roughness:0.2'});
+  makeInteractable(fallBtn,'water','Pool waterfall — turn it on / off','poolfall');
+  promptSign(12,3.4,-8.4,'\u25B6 WATERFALL',0);
+  waters.poolfall={on:false,visuals:[fallSheet,fallFoam],label:'Pool waterfall'};
+  // slide into the pool
+  var slide=box(world,16.8,1.1,-1.6,0.9,0.18,3.4,0xffd95e,{emissive:GOLD,ei:0.25,rough:0.3});
+  slide.setAttribute('rotation','-24 0 0');
+  box(world,16.8,0.5,-0.4,0.9,1.4,0.18,GOLD,{metal:0.9});
+  label(world,16.8,2.6,-1.4,'SLIDE',3,'#ffd95e',180);
+  // loungers
+  [8.6,15.4].forEach(function(lx){
+    box(world,lx,0.3,-0.9,1,0.35,2.2,0xe8e0cc,{rough:0.9});
+    addCollider(lx,-0.9,1,2.2);
+  });
+})();
+
+/* ================= SECRET ILLUSION ROOM ================= */
+(function(){
+  // glowing portal + floating shapes: the room that feels impossible
+  el('a-torus',world,{position:'0 1.9 -9.6',radius:1.5,tube:0.09,
+    material:'color:#ffd95e; emissive:#c9a227; emissiveIntensity:1.1; metalness:0.6'});
+  plane(world,0,1.9,-9.68,2.6,2.6,0x12081f,{emissive:0x3a1a6e,ei:0.8});
+  var spin=el('a-entity',world,{position:'0 1.8 -5'});
+  el('a-octahedron',spin,{position:'0 0.4 0',radius:0.55,
+    material:'color:#7ad0ff; transparent:true; opacity:0.65; emissive:#2e9fd8; emissiveIntensity:0.9'});
+  el('a-torus',spin,{position:'0 0.4 0',radius:0.95,tube:0.035,rotation:'90 0 0',
+    material:'color:#ffd95e; emissive:#c9a227; emissiveIntensity:0.9'});
+  animProps.portalSpin=spin;
+  box(world,-3.5,0.5,-7.5,1.6,1,1.6,0x1a1a1a,{emissive:0x224422,ei:0.3});
+  box(world,3.5,0.5,-2.5,1.6,1,1.6,0x1a1a1a,{emissive:0x442222,ei:0.3});
+  label(world,0,1.1,-9.5,'ONE PORTAL — ANY WORLD',5,'#c9a2ff',0);
+  promptSign(0,3.7,-1,'SIM ROOM — BEHIND THE BOOKSHELF',0);
+})();
+/* In-VR help panel in the foyer */
+(function(){
+  var p=plane(world,4.4,2,10.16,4.6,2.3,0x0a0a0a,{opacity:0.92});
+  label(world,4.4,2.75,10.2,'HOW TO PLAY',3.6,'#ffd95e',0);
+  label(world,4.4,2.25,10.2,'Left stick: walk   Right stick: turn',4.2,'#ffffff',0);
+  label(world,4.4,1.85,10.2,'Point at gold + trigger: use it',4.2,'#ffffff',0);
+  label(world,4.4,1.45,10.2,'Try the faucet, walls, bookshelf,',4.2,'#ffffff',0);
+  label(world,4.4,1.1,10.2,'painting, counter, TV, waterfall',4.2,'#ffffff',0);
+})();
+</script>
+
+<script>
+/* ================= SIMULATION ROOM — THE PORTAL =================
+   The room behind the bookshelf IS the Simulation Room. One hidden
+   portal: trigger it and the whole room becomes a great hall world.
+   Trigger again to come back.                                        */
+var greatHall, simCandles=[], simFigures=[];
+(function(){
+  greatHall=el('a-entity',world,{visible:'false'});
+  var g=greatHall;
+  // starry ceiling
+  plane(g,0,3.96,-5,11.6,9.6,0x02030a,{rx:90});
+  for(var s=0;s<70;s++){
+    el('a-sphere',g,{position:(-5.4+ (s*37%108)/10)+' 3.9 '+(-9.4+(s*53%88)/10),
+      radius:0.03+(s%3)*0.015,material:'color:#ffffff; emissive:#ffffff; emissiveIntensity:1.2'});
+  }
+  // two long house tables + benches
+  [-2.2,2.2].forEach(function(tx){
+    box(g,tx,0.78,-5,1.4,0.14,7.6,0x2a1a08,{rough:0.4});
+    [[-0.55],[0.55]].forEach(function(o){
+      box(g,tx+o[0],0.39,-5,0.16,0.78,7.6,0x3a2a10,{});
+    });
+    box(g,tx-1.15,0.45,-5,0.4,0.1,7.2,0x241708,{});
+    box(g,tx+1.15,0.45,-5,0.4,0.1,7.2,0x241708,{});
+    for(var p=0;p<6;p++){
+      cyl(g,tx,1,-8.3+p*1.3,0.11,0.11,0.04,GOLD,{metal:0.95});
+      el('a-sphere',g,{position:tx+' 1.12 '+(-8.3+p*1.3),radius:0.05,
+        material:'color:#ffe9a8; emissive:#ffbf3f; emissiveIntensity:1'});
+    }
+  });
+  // head table across the far end
+  box(g,0,0.82,-9,7,0.14,1.2,0x2a1a08,{rough:0.4});
+  // floating candles (they bob in the animation loop)
+  for(var c=0;c<14;c++){
+    var candle=el('a-entity',g,{position:(-4.5+(c%7)*1.5)+' '+(2.9+(c%3)*0.25)+' '+(-8.5+Math.floor(c/7)*5.5)});
+    cyl(candle,0,0,0,0.035,0.045,0.3,0xf5eeda,{rough:0.8});
+    el('a-sphere',candle,{position:'0 0.24 0',radius:0.045,
+      material:'color:#ffe9a8; emissive:#ff9d2e; emissiveIntensity:1.5'});
+    simCandles.push({el:candle,baseY:2.9+(c%3)*0.25,ph:c*0.7});
+  }
+  // hologram students (seated, glowing) + teachers (standing at the head table)
+  function holoFigure(parent,x,y,z,color,scale){
+    var f=el('a-entity',parent,{position:x+' '+y+' '+z});
+    cyl(f,0,0.45*scale,0,0.16*scale,0.22*scale,0.9*scale,color,{opacity:0.55,emissive:color,ei:0.8,rough:0.3});
+    el('a-sphere',f,{position:'0 '+(1.05*scale)+' 0',radius:0.17*scale,
+      material:'color:#'+color.toString(16).padStart(6,'0')+'; transparent:true; opacity:0.6; emissive:#'+color.toString(16).padStart(6,'0')+'; emissiveIntensity:0.8'});
+    simFigures.push(f); return f;
+  }
+  [-2.2,2.2].forEach(function(tx){
+    for(var st=0;st<3;st++){
+      holoFigure(g,tx-1.05,0.5,-7.6+st*2.4,0x7ad0ff,0.95);
+      holoFigure(g,tx+1.05,0.5,-6.4+st*2.4,0xffd95e,0.95);
+    }
+  });
+  holoFigure(g,-1.6,0,-9.9,0xc9a2ff,1.15);
+  holoFigure(g,1.6,0,-9.9,0xc9a2ff,1.15);
+  label(g,0,3.4,-9.7,'THE GREAT HALL',7,'#c9a2ff',0);
+  // the portal itself is the trigger (ring on the north wall + floating ring mid-room)
+  var ring=el('a-torus',world,{position:'0 1.9 -4.2',radius:0.85,tube:0.06,
+    material:'color:#c9a2ff; emissive:#7a3ae0; emissiveIntensity:1.1; metalness:0.4'});
+  makeInteractable(ring,'portal','The Portal — step into another world / come back');
+  promptSign(0,3.2,-3.2,'\u25B6 THE PORTAL',0);
+  animProps.portal={active:false,group:greatHall};
+})();
+
+/* ================= POOL: SWIM-UP BAR + LAZY RIVER ================= */
+var lazyRiver;
+(function(){
+  // swim-up bar: counter standing in the water at the east edge of the basin
+  box(world,15.3,-0.05,-5,0.8,0.75,4.4,0x1d1d1d,{rough:0.35});
+  box(world,15.3,0.36,-5,0.95,0.08,4.6,GOLD,{metal:0.9,rough:0.25});
+  for(var s=0;s<3;s++){
+    cyl(world,14.6,-0.35,-6.6+s*1.6,0.26,0.26,0.25,0x8a1f2e,{rough:0.6});  // submerged stools
+    cyl(world,15.3,0.55,-6.6+s*1.6,0.05,0.07,0.35,s%2?0x2e9fd8:0xffd95e,{emissive:s%2?0x2e9fd8:0xc9a227,ei:0.5}); // bottles
+  }
+  var bell=el('a-sphere',world,{position:'15.3 0.52 -3.4',radius:0.09,
+    material:'color:#ffd95e; emissive:#c9a227; emissiveIntensity:0.9; metalness:0.95; roughness:0.15'});
+  makeInteractable(bell,'bar','Swim-up bar — ring for a drink');
+  promptSign(15.2,1.6,-2.6,'\u25B6 SWIM-UP BAR',180);
+  // lazy river: a slow current of foam dots circling the water
+  lazyRiver=el('a-entity',world,{position:'12 -0.28 -5'});
+  for(var d=0;d<12;d++){
+    var a=d/12*6.283;
+    el('a-sphere',lazyRiver,{position:(Math.cos(a)*2.9)+' 0 '+(Math.sin(a)*2.1),radius:0.07,
+      material:'color:#dff4ff; transparent:true; opacity:0.8; emissive:#7ad0ff; emissiveIntensity:0.35'});
+  }
+  animProps.lazyRiver=lazyRiver;
+})();
+
+/* ================= MORE TOUCHABLES ================= */
+// light switches — cycle the whole mansion's lighting mood
+[[-5.8,1.4,12,90],[5.8,1.4,7,-90],[-11,1.4,-10.2,0]].forEach(function(sw){
+  var plate=box(world,sw[0],sw[1],sw[2],0.3,0.42,0.08,GOLD_L,{emissive:GOLD,ei:0.7,metal:0.9});
+  plate.setAttribute('rotation','0 '+sw[3]+' 0');
+  makeInteractable(plate,'lights','Light switch — change the lighting');
+});
+animProps.lightMode=0;
+// holo game table toggles its hologram
+if(holoSpinner){
+  var holoBtn=cyl(world,10.6,1.16,-14.5,0.09,0.09,0.06,GOLD_L,{emissive:GOLD_L,ei:0.9});
+  makeInteractable(holoBtn,'holo','Holo table — hologram on / off');
+}
+// VR pods toggle their dome glow
+[8.8,15.2].forEach(function(px){
+  var podBtn=el('a-sphere',world,{position:(px+1.15)+' 1 -16.9',radius:0.08,
+    material:'color:#8fd8ff; emissive:#2e9fd8; emissiveIntensity:0.9'});
+  makeInteractable(podBtn,'pod','VR pod — power on / off');
+});
+animProps.podsOn=true;
+// kitchen stove burner
+var burnerGlow=cyl(world,-17.2,1.21,3.4,0.32,0.32,0.02,0xff5a1f,{opacity:0.0,emissive:0xff5a1f,ei:1});
+var burnerKnob=el('a-sphere',world,{position:'-16.6 1.05 2.6',radius:0.07,
+  material:'color:#ffd95e; emissive:#c9a227; emissiveIntensity:0.8; metalness:0.9'});
+makeInteractable(burnerKnob,'burner','Stove — burner on / off');
+animProps.burner={on:false,glow:burnerGlow};
+</script>
+
+<script>
+/* ================= SOUND (WebAudio, all generated) ================= */
+var AE={ctx:null,master:null,waterGains:{},on:false};
+function audioInit(){
+  if(AE.ctx) { if(AE.ctx.state==='suspended') AE.ctx.resume(); return; }
+  try{
+    var C=new (window.AudioContext||window.webkitAudioContext)();
+    AE.ctx=C;
+    AE.master=C.createGain(); AE.master.gain.value=0.9; AE.master.connect(C.destination);
+    // ambient pad: two soft detuned sines through a lowpass
+    var padGain=C.createGain(); padGain.gain.value=0.016;
+    var lp=C.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=420;
+    [110,164.8,220.5].forEach(function(f){
+      var o=C.createOscillator(); o.type='sine'; o.frequency.value=f;
+      o.connect(lp); o.start();
+    });
+    lp.connect(padGain); padGain.connect(AE.master);
+    // water loops: filtered noise per source, gain 0 until toggled
+    ['kitchen','jacuzzi','poolfall'].forEach(function(k){
+      var len=2*C.sampleRate, buf=C.createBuffer(1,len,C.sampleRate), d=buf.getChannelData(0);
+      for(var i=0;i<len;i++) d[i]=Math.random()*2-1;
+      var src=C.createBufferSource(); src.buffer=buf; src.loop=true;
+      var bp=C.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=k==='poolfall'?600:900; bp.Q.value=0.6;
+      var g=C.createGain(); g.gain.value=0;
+      src.connect(bp); bp.connect(g); g.connect(AE.master); src.start();
+      AE.waterGains[k]=g;
+    });
+    AE.on=true;
+    document.getElementById('soundBtn').innerHTML='&#128266; Sound: ON';
+  }catch(e){ /* audio unavailable — world still works silently */ }
+}
+function setWaterSound(key,on){
+  if(!AE.ctx||!AE.waterGains[key]) return;
+  var g=AE.waterGains[key].gain, t=AE.ctx.currentTime;
+  g.cancelScheduledValues(t); g.setValueAtTime(g.value,t);
+  g.linearRampToValueAtTime(on?0.11:0,t+0.4);
+}
+function blip(freq,delay,dur,type,vol){
+  if(!AE.ctx) return;
+  var C=AE.ctx,t=C.currentTime+(delay||0);
+  var o=C.createOscillator(),g=C.createGain();
+  o.type=type||'sine'; o.frequency.value=freq;
+  g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol||0.06,t+0.015);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+(dur||0.25));
+  o.connect(g); g.connect(AE.master); o.start(t); o.stop(t+(dur||0.25)+0.05);
+}
+function chime(){ blip(880,0,0.3,'sine',0.05); blip(1318,0.09,0.4,'sine',0.045); }
+function clickSnd(){ blip(340,0,0.09,'square',0.03); }
+function bellSnd(){ blip(1568,0,0.5,'sine',0.06); blip(2093,0.12,0.6,'sine',0.05); }
+function whoosh(){
+  if(!AE.ctx) return;
+  var C=AE.ctx,t=C.currentTime,len=0.5*C.sampleRate,buf=C.createBuffer(1,len,C.sampleRate),d=buf.getChannelData(0);
+  for(var i=0;i<len;i++) d[i]=(Math.random()*2-1)*(1-i/len);
+  var src=C.createBufferSource(); src.buffer=buf;
+  var bp=C.createBiquadFilter(); bp.type='bandpass'; bp.Q.value=1.2;
+  bp.frequency.setValueAtTime(300,t); bp.frequency.exponentialRampToValueAtTime(1800,t+0.35);
+  var g=C.createGain(); g.gain.value=0.12;
+  src.connect(bp); bp.connect(g); g.connect(AE.master); src.start(t);
+}
+function stepSnd(){
+  if(!AE.ctx) return;
+  var C=AE.ctx,t=C.currentTime,len=0.07*C.sampleRate,buf=C.createBuffer(1,len,C.sampleRate),d=buf.getChannelData(0);
+  for(var i=0;i<len;i++) d[i]=(Math.random()*2-1)*(1-i/len);
+  var src=C.createBufferSource(); src.buffer=buf;
+  var lp=C.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=320;
+  var g=C.createGain(); g.gain.value=0.05;
+  src.connect(lp); lp.connect(g); g.connect(AE.master); src.start(t);
+}
+document.getElementById('soundBtn').addEventListener('click',function(){ audioInit(); toast('Sound on — ambient hum, water and chimes are live'); });
+document.getElementById('scene').addEventListener('enter-vr',audioInit);
+document.getElementById('enterVrBtn').addEventListener('click',function(){
+  audioInit();
+  var sc=document.getElementById('scene');
+  if(sc.enterVR) sc.enterVR();
+});
+
+/* ================= TOAST + HIGHLIGHT ================= */
+var toastTimer=null;
+function toast(msg){
+  var t=document.getElementById('toast');
+  t.textContent=msg; t.style.opacity='1';
+  clearTimeout(toastTimer); toastTimer=setTimeout(function(){ t.style.opacity='0'; },2600);
+}
+interactables.forEach(function(elm){
+  elm.addEventListener('mouseenter',function(){
+    var m=elm.getAttribute('material');
+    if(m&&m.opacity!==0){
+      elm._hl={e:m.emissive,i:m.emissiveIntensity};
+      elm.setAttribute('material','emissive','#ffbf3f');
+      elm.setAttribute('material','emissiveIntensity','1.1');
+    }
+    var p=elm.getAttribute('data-prompt'); if(p) toast(p);
+  });
+  elm.addEventListener('mouseleave',function(){
+    if(elm._hl){
+      elm.setAttribute('material','emissive',elm._hl.e||'#000000');
+      elm.setAttribute('material','emissiveIntensity',elm._hl.i||0);
+      elm._hl=null;
+    }
+  });
+  elm.addEventListener('click',function(){ audioInit(); doAction(elm.getAttribute('data-action'),elm.getAttribute('data-key'),elm); });
+});
+
+/* ================= ACTIONS ================= */
+var podLight=el('a-light',world,{type:'point',color:'#7ad0ff',intensity:0,distance:14,position:'12 2.6 -16.5'});
+function doAction(action,key,elm){
+  if(action==='water'){
+    var w=waters[key]; if(!w) return;
+    w.on=!w.on;
+    w.visuals.forEach(function(v){ v.setAttribute('visible',w.on?'true':'false'); });
+    setWaterSound(key,w.on);
+    if(w.on) chime(); else clickSnd();
+    toast(w.label+(w.on?' — ON':' — OFF'));
+  }
+  else if(action==='screen'){
+    var scr=elm._screen; if(!scr) return;
+    scr.mode=(scr.mode+1)%SCREEN_MODES.length;
+    drawScreen(scr,performance.now());
+    chime();
+    toast(scr.room+' walls: '+SCREEN_NAMES[SCREEN_MODES[scr.mode]]);
+  }
+  else if(action==='bookshelf'){
+    var b=animProps.bookshelf; b.open=!b.open; b.target=b.open?-108:0;
+    if(b.open) removeCollider(b.collider); else if(colliders.indexOf(b.collider)<0) colliders.push(b.collider);
+    whoosh(); toast(b.open?'The bookshelf swings open — Simulation Room':'Bookshelf closed');
+  }
+  else if(action==='painting'){
+    var p=animProps.painting; p.open=!p.open; p.target=p.open?102:0;
+    if(p.open) removeCollider(p.collider); else if(colliders.indexOf(p.collider)<0) colliders.push(p.collider);
+    whoosh(); toast(p.open?'The painting swings open — a secret passage':'Painting closed');
+  }
+  else if(action==='counter'){
+    var c=animProps.counter; c.open=!c.open; c.target=c.open?c.openX:c.closedX;
+    if(c.open) removeCollider(c.collider); else if(colliders.indexOf(c.collider)<0) colliders.push(c.collider);
+    whoosh(); toast(c.open?'Counter slid aside — stairs down to the pool grotto':'Counter closed');
+  }
+  else if(action==='tv'){
+    var t=animProps.tv; t.on=!t.on; t.target=t.on?t.up:t.down;
+    whoosh(); toast(t.on?'TV rising from the floor':'TV sinking into the floor');
+  }
+  else if(action==='table'){
+    var tb=animProps.table; tb.on=!tb.on; tb.target=tb.on?tb.up:tb.down;
+    whoosh(); toast(tb.on?'Dining table rising back up':'Dining table dropping into the floor');
+  }
+  else if(action==='portal'){
+    var po=animProps.portal; po.active=!po.active;
+    po.group.setAttribute('visible',po.active?'true':'false');
+    whoosh(); chime(); setTimeout(chime,180);
+    toast(po.active?'SIMULATION: The Great Hall — hologram students and teachers, floating candles':'Simulation off — back to the Sim Room');
+  }
+  else if(action==='airdry'){
+    if(airDry.on) return;
+    airDry.on=true; whoosh();
+    airDry.streams.forEach(function(s){ s.setAttribute('material','opacity','0.45'); });
+    toast('Air-dry cylinder ON — warm air all around you');
+    setTimeout(function(){
+      airDry.on=false;
+      airDry.streams.forEach(function(s){ s.setAttribute('material','opacity','0'); });
+    },6000);
+  }
+  else if(action==='lights'){
+    animProps.lightMode=(animProps.lightMode+1)%3;
+    var names=['Grand Bright','Soft Dim','Gold Glow'], f=[1,0.35,1.5][animProps.lightMode];
+    document.querySelectorAll('a-light').forEach(function(L){
+      if(L===podLight) return;
+      if(L._base===undefined) L._base=parseFloat(L.getAttribute('intensity'))||0.5;
+      L.setAttribute('intensity',String(L._base*f));
+    });
+    clickSnd(); toast('Lighting: '+names[animProps.lightMode]);
+  }
+  else if(action==='holo'){
+    if(holoSpinner){ var v=holoSpinner.getAttribute('visible'); holoSpinner.setAttribute('visible',v==='false'?'true':'false'); }
+    chime(); toast('Hologram toggled');
+  }
+  else if(action==='pod'){
+    animProps.podsOn=!animProps.podsOn;
+    podLight.setAttribute('intensity',animProps.podsOn?'0':'1.3');
+    chime(); toast(animProps.podsOn?'VR pods powered down':'VR pods powered up — domes glowing');
+  }
+  else if(action==='bar'){ bellSnd(); toast('Swim-up bar: drink on its way \uD83C\uDF79'); }
+  else if(action==='burner'){
+    var bn=animProps.burner; bn.on=!bn.on;
+    bn.glow.setAttribute('material','opacity',bn.on?'0.85':'0');
+    clickSnd(); toast(bn.on?'Burner ON':'Burner off');
+  }
+}
+
+/* ================= LOCOMOTION + COLLISION ================= */
+addCollider(-9,2.4,2.6,3.2,'stairs-look-only');   // look down the stairs, don't fall in
+var rig=document.getElementById('rig'), cam=document.getElementById('cam');
+var keys={}, stepAcc=0, snapArmed=true;
+document.addEventListener('keydown',function(e){ keys[e.code]=true; });
+document.addEventListener('keyup',function(e){ keys[e.code]=false; });
+function canStand(x,z){
+  if(x<-17.4||x>17.4||z<-19.4||z>19.4) return false;
+  if(z>10.4&&(x<-5.4||x>5.4)) return false;      // south strip is foyer only
+  for(var i=0;i<colliders.length;i++){
+    var c=colliders[i];
+    if(x>c.minX-0.33&&x<c.maxX+0.33&&z>c.minZ-0.33&&z<c.maxZ+0.33) return false;
+  }
+  return true;
+}
+function moveRig(dx,dz,dt){
+  var sp=(keys.ShiftLeft||keys.ShiftRight)?4.2:2.3;
+  var nx=rig.object3D.position.x+dx*sp*dt, nz=rig.object3D.position.z+dz*sp*dt;
+  var ox=rig.object3D.position.x, oz=rig.object3D.position.z;
+  if(canStand(nx,oz)) rig.object3D.position.x=nx;
+  if(canStand(rig.object3D.position.x,nz)) rig.object3D.position.z=nz;
+  var moved=Math.hypot(rig.object3D.position.x-ox,rig.object3D.position.z-oz);
+  stepAcc+=moved;
+  if(stepAcc>1.7){ stepAcc=0; stepSnd(); }
+}
+function locomotion(dt){
+  var scene=document.getElementById('scene');
+  var fwd=new THREE.Vector3();
+  if(scene.is('vr-mode')){
+    cam.object3D.getWorldDirection(fwd); fwd.y=0;
+    if(fwd.lengthSq()<0.001) fwd.set(0,0,-1); fwd.normalize();
+  }else{
+    var yaw=rig.object3D.rotation.y+cam.object3D.rotation.y;
+    fwd.set(-Math.sin(yaw),0,-Math.cos(yaw));
+  }
+  var right=new THREE.Vector3(fwd.z,0,-fwd.x).multiplyScalar(-1);
+  var mx=0,mz=0;
+  // desktop keys
+  if(keys.KeyW||keys.ArrowUp){ mx+=fwd.x; mz+=fwd.z; }
+  if(keys.KeyS||keys.ArrowDown){ mx-=fwd.x; mz-=fwd.z; }
+  if(keys.KeyA||keys.ArrowLeft){ mx-=right.x; mz-=right.z; }
+  if(keys.KeyD||keys.ArrowRight){ mx+=right.x; mz+=right.z; }
+  if(keys.KeyQ) rig.object3D.rotation.y+=1.6*dt;
+  if(keys.KeyE) rig.object3D.rotation.y-=1.6*dt;
+  // XR gamepads: left stick move, right stick snap turn
+  var gps=navigator.getGamepads?navigator.getGamepads():[];
+  for(var i=0;i<gps.length;i++){
+    var gp=gps[i]; if(!gp||!gp.axes||gp.axes.length<4) continue;
+    var ax=gp.axes[2], ay=gp.axes[3];
+    if(gp.hand==='left'||(!gp.hand&&i===0)){
+      if(Math.abs(ax)>0.15||Math.abs(ay)>0.15){ mx+=fwd.x*-ay+right.x*ax; mz+=fwd.z*-ay+right.z*ax; }
+    }
+    if(gp.hand==='right'||(!gp.hand&&i===1)){
+      if(snapArmed&&Math.abs(ax)>0.7){ rig.object3D.rotation.y-=Math.sign(ax)*Math.PI/6; snapArmed=false; }
+      if(Math.abs(ax)<0.3) snapArmed=true;
+    }
+  }
+  var l=Math.hypot(mx,mz);
+  if(l>0.01) moveRig(mx/l,mz/l,dt);
+  // wading dips: pool basin / jacuzzi
+  var px=rig.object3D.position.x, pz=rig.object3D.position.z, ty=0;
+  if(px>8.2&&px<15.8&&pz>-7.8&&pz<-2.2) ty=-0.55;
+  else if(px>-4.9&&px<-1.5&&pz>-17.3&&pz<-14.7) ty=-0.45;
+  rig.object3D.position.y+=(ty-rig.object3D.position.y)*Math.min(1,dt*5);
+}
+
+/* ================= ANIMATION LOOP ================= */
+var lastT=performance.now();
+function animate(now){
+  requestAnimationFrame(animate);
+  var dt=Math.min(0.05,(now-lastT)/1000); lastT=now;
+  var t=now/1000;
+  locomotion(dt);
+  function lerpPos(obj,axis,target,speed){
+    var cur=obj.object3D.position[axis], d=target-cur, step=speed*dt;
+    obj.object3D.position[axis]=Math.abs(d)<step?target:cur+Math.sign(d)*step;
+  }
+  function lerpRot(obj,targetDeg,speed){
+    var cur=obj.object3D.rotation.y, tgt=targetDeg*Math.PI/180, d=tgt-cur;
+    obj.object3D.rotation.y=Math.abs(d)<speed*dt?tgt:cur+Math.sign(d)*speed*dt;
+  }
+  lerpPos(animProps.tv.group,'y',animProps.tv.target,1.1);
+  lerpPos(animProps.table.group,'y',animProps.table.target,0.9);
+  lerpPos(animProps.counter.group,'x',animProps.counter.target,1.6);
+  lerpRot(animProps.bookshelf.pivot,animProps.bookshelf.target,1.9);
+  lerpRot(animProps.painting.pivot,animProps.painting.target,1.9);
+  if(animProps.portalSpin) animProps.portalSpin.object3D.rotation.y+=dt*0.5;
+  if(holoSpinner) holoSpinner.object3D.rotation.y+=dt*0.8;
+  if(animProps.lazyRiver) animProps.lazyRiver.object3D.rotation.y+=dt*0.12;
+  // fish
+  for(var i=0;i<fishes.length;i++){
+    var f=fishes[i];
+    if(f.underFloor){
+      var a=t*f.sp+f.ph;
+      f.el.setAttribute('position',(f.cx+Math.cos(a)*f.r)+' '+f.y+' '+(f.cz+Math.sin(a)*f.r*0.7));
+      f.el.setAttribute('rotation','0 '+(-a*57.3+90)+' 0');
+    }else if(f.wallTank){
+      f.el.setAttribute('position',(f.wallTank.baseX+Math.sin(t*0.6+f.wallTank.ph)*0.55)+' '+f.wallTank.baseY+' 0.1');
+    }
+  }
+  // jacuzzi bubbles rise
+  if(waters.jacuzzi&&waters.jacuzzi.on){
+    jacuzziBubbles.forEach(function(b,bi){
+      var p=b.getAttribute('position');
+      var ny=-0.2+((t*0.25+bi*0.13)%0.35);
+      b.setAttribute('position',p.x+' '+ny+' '+p.z);
+    });
+  }
+  // great-hall candles bob + hologram figures flicker
+  if(animProps.portal&&animProps.portal.active){
+    simCandles.forEach(function(cd){
+      var p=cd.el.getAttribute('position');
+      cd.el.setAttribute('position',p.x+' '+(cd.baseY+Math.sin(t*1.4+cd.ph)*0.09)+' '+p.z);
+    });
+    simFigures.forEach(function(fg,fi){
+      fg.object3D.traverse(function(n){
+        if(n.material&&n.material.transparent) n.material.opacity=0.45+0.18*Math.sin(t*6+fi*1.7);
+      });
+    });
+  }
+}
+requestAnimationFrame(animate);
+/* screen walls redraw, staggered */
+var scrIdx=0;
+setInterval(function(){
+  var now=performance.now();
+  for(var k=0;k<3;k++){
+    var scr=screens[(scrIdx+k)%screens.length];
+    if(scr) drawScreen(scr,now);
+  }
+  scrIdx=(scrIdx+3)%screens.length;
+},180);
+screens.forEach(function(s){ drawScreen(s,performance.now()); });
+setTimeout(function(){ toast('Welcome home, Deezy. Point at gold things and pull the trigger.'); },1200);
+</script>
+</body>
+</html>
