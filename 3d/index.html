@@ -233,6 +233,7 @@ function panelMat(rx,ry,tint){
   m.roughnessMap=loadTex(PH+'dark_paneled_wood/dark_paneled_wood_rough_1k.jpg',false,rx,ry);
   m.aoMap=loadTex(PH+'dark_paneled_wood/dark_paneled_wood_ao_1k.jpg',false,rx,ry);
   m.aoMap.channel=0;
+  m.userData.baseEnv=0.65; (window.__panelMats=window.__panelMats||[]).push(m);
   return m;
 }
 function goldMetalMat(){
@@ -661,6 +662,10 @@ function drawScreen(scr,t){
       var px=(j*97+sd*10+t*0.02*(1+j%3))%W, py=(j*57+sd*7)%H;
       c.fillStyle='rgba(255,215,110,0.75)'; c.fillRect(px,py,2,2);
     }
+    var hx=((t*0.03+sd*40)%(W+300))-150;
+    var hg=c.createLinearGradient(hx-120,0,hx+120,0);
+    hg.addColorStop(0,'rgba(255,200,80,0)'); hg.addColorStop(0.5,'rgba(255,200,80,0.10)'); hg.addColorStop(1,'rgba(255,200,80,0)');
+    c.fillStyle=hg; c.fillRect(hx-120,0,240,H);
   }
   else if(mode==='rain'){
     c.fillStyle='#04070d'; c.fillRect(0,0,W,H);
@@ -670,6 +675,11 @@ function drawScreen(scr,t){
       c.beginPath(); c.moveTo(rx,ry); c.lineTo(rx-3,ry+13); c.stroke();
     }
     c.fillStyle='rgba(255,215,110,0.20)'; c.fillRect(0,H-16,W,2);
+    for(var rp2=0;rp2<5;rp2++){
+      var rpx=(rp2*211+sd*31)%W, rpr=((t*0.05+rp2*37)%60)/60;
+      c.beginPath(); c.ellipse(rpx,H-14,Math.max(0.1,rpr*26),Math.max(0.05,rpr*7),0,0,6.29);
+      c.strokeStyle='rgba(150,200,255,'+(0.35*(1-rpr)).toFixed(3)+')'; c.lineWidth=1.2; c.stroke();
+    }
   }
   else if(mode==='stars'){
     c.fillStyle='#010208'; c.fillRect(0,0,W,H);
@@ -682,6 +692,15 @@ function drawScreen(scr,t){
     c.beginPath(); c.arc(W*0.78,H*0.26,13,0,6.29); c.fill();
     c.fillStyle='rgba(1,2,8,0.9)';
     c.beginPath(); c.arc(W*0.78+6,H*0.26-4,11,0,6.29); c.fill();
+    for(var ab=0;ab<2;ab++){
+      c.beginPath();
+      for(var ax3=0;ax3<=W;ax3+=16){
+        var ay3=H*(0.16+ab*0.13)+Math.sin(ax3*0.008+t*0.0004+ab*2.1+sd)*22;
+        ax3===0?c.moveTo(ax3,ay3):c.lineTo(ax3,ay3);
+      }
+      c.strokeStyle=ab?'rgba(150,90,255,0.10)':'rgba(80,255,170,0.10)';
+      c.lineWidth=26-ab*8; c.stroke();
+    }
   }
   else if(mode==='waves'){
     var grad=c.createLinearGradient(0,0,0,H);
@@ -695,6 +714,10 @@ function drawScreen(scr,t){
       }
       c.strokeStyle='rgba(255,'+(170+wv*3)+',60,'+(0.16+0.02*(wv%5))+')'; c.lineWidth=2; c.stroke();
     }
+    var hx2=((t*0.045+sd*60)%(W+300))-150;
+    var hg2=c.createLinearGradient(hx2-110,0,hx2+110,0);
+    hg2.addColorStop(0,'rgba(255,210,90,0)'); hg2.addColorStop(0.5,'rgba(255,210,90,0.08)'); hg2.addColorStop(1,'rgba(255,210,90,0)');
+    c.fillStyle=hg2; c.fillRect(hx2-110,0,220,H);
   }
   if(scr.tex) scr.tex.needsUpdate=true;
 }
@@ -2044,6 +2067,13 @@ function doAction(ent){
     ch.center.setAttribute('material','emissiveIntensity:'+([0.4,1.2,2.0][ch.level]));
     showToast('Chandelier: '+(['dim','warm','bright'][ch.level]));
   }
+  else if(action==='4d'){
+    var fd0=animProps.fourD; if(!fd0) return;
+    fd0.on=!fd0.on;
+    if(fd0.group) fd0.group.visible=fd0.on;
+    showToast('4D effects '+(fd0.on?'ON — things come out of the screen':'off'));
+    if(fd0.on) playClick(660);
+  }
   else if(action==='vidplay'){ vidPlayPause(); }
   else if(action==='vidnext'){ vidStep(1); }
   else if(action==='vidprev'){ vidStep(-1); }
@@ -2206,6 +2236,72 @@ function frameStep(t,deltaMs){
     }
     ep.attr.needsUpdate=true;
   }
+  /* --- v6.1: living walls — slow sheen breathing across the paneling --- */
+  if(window.__panelMats){
+    var shm=0.07*Math.sin(t*0.0006)+0.04*Math.sin(t*0.0017+1.3);
+    for(var pmi=0;pmi<window.__panelMats.length;pmi++){
+      var pmm=window.__panelMats[pmi]; pmm.envMapIntensity=pmm.userData.baseEnv+shm;
+    }
+  }
+  /* --- v6.1: 4D cinema — things come OUT of the screen --- */
+  var fd=animProps.fourD;
+  if(fd&&fd.group){
+    var inCinema=(typeof pcx!=='undefined'&&pcx===-1&&pcz===1);
+    var seaMode=(typeof vidIdx!=='undefined'&&vidIdx===1);
+    fd.group.visible=fd.on;
+    fd.seaGrp.visible=fd.on&&seaMode;
+    fd.fireGrp.visible=fd.on&&!seaMode;
+    if(fd.on&&seaMode){
+      var pose4=function(cfg,u){
+        var depth=Math.sin(u*Math.PI);
+        return {x:-12+cfg.lane+Math.sin(u*Math.PI*2+cfg.ph)*1.7,
+                y:2.45+depth*0.85+Math.sin(u*Math.PI*6+cfg.ph)*0.07,
+                z:-9.55+depth*cfg.reach};
+      };
+      var animFish4=function(cfg,isRay){
+        var u=((t*0.001)/cfg.T+cfg.off)%1;
+        var p0=pose4(cfg,u), p1=pose4(cfg,(u+0.01)%1);
+        cfg.mesh.position.set(p0.x,p0.y,p0.z);
+        var vx=p1.x-p0.x, vy=p1.y-p0.y, vz=p1.z-p0.z;
+        cfg.mesh.rotation.y=Math.atan2(-vz,vx);
+        cfg.mesh.rotation.z=Math.atan2(vy,Math.max(0.001,Math.sqrt(vx*vx+vz*vz)));
+        cfg.mat.opacity=Math.min(1,Math.sin(u*Math.PI)*3.5);
+        if(isRay){ cfg.mesh.rotation.x=Math.sin(t*0.004)*0.12; cfg.mesh.scale.set(1,1,1+0.07*Math.sin(t*0.004)); }
+      };
+      fd.fish.forEach(function(fsh){ animFish4(fsh,false); });
+      animFish4(fd.ray,true);
+    }
+    if(fd.on&&!seaMode){
+      var eb=fd.embers;
+      for(var ei3=0;ei3<eb.seed.length;ei3++){
+        eb.pos[ei3*3+2]+=dt*(0.5+eb.seed[ei3]*0.45);
+        eb.pos[ei3*3+1]+=dt*0.16*Math.sin(t*0.001+ei3);
+        eb.pos[ei3*3]+=Math.sin(t*0.002+ei3*1.7)*dt*0.14;
+        if(eb.pos[ei3*3+2]>-1.8){
+          eb.pos[ei3*3]=-12+(Math.random()-0.5)*7;
+          eb.pos[ei3*3+1]=0.9+Math.random()*2.3;
+          eb.pos[ei3*3+2]=-9.5;
+        }
+      }
+      eb.attr.needsUpdate=true;
+    }
+    /* seat moments: controller rumble + a breath of room shake,
+       only while the player is actually in the cinema */
+    if(fd.on&&inCinema){
+      if(!fd.nextMoment) fd.nextMoment=t+2500;
+      if(t>=fd.nextMoment){
+        fd.nextMoment=t+7000+Math.random()*2500;
+        fd.shakeT=0.45;
+        pulseHaptics(0.55,350);
+      }
+    }
+    if(fd.shakeT>0){
+      fd.shakeT-=dt;
+      var sa=Math.max(0,fd.shakeT/0.45)*0.028;
+      world.object3D.position.set((Math.random()-0.5)*sa,(Math.random()-0.5)*sa*0.4,(Math.random()-0.5)*sa);
+      if(fd.shakeT<=0) world.object3D.position.set(0,0,0);
+    }
+  }
   /* --- room visibility (only nearby rooms draw) --- */
   if(t-lastVisCheck>250){
     lastVisCheck=t;
@@ -2317,6 +2413,86 @@ rig.setAttribute('locomotion','');
 screens.forEach(function(s){ drawScreen(s,0); });
 </script>
 
+<script>
+/* ================= 4D CINEMA EFFECTS (v6.1) =================
+   On the aquarium channel, fish + a ray swim OUT of the screen
+   plane, arc over the seats and loop back in; on the fire
+   channels, embers drift out toward the audience. Timed seat
+   moments (controller rumble + subtle world shake) fire while
+   the player is in the cinema. Gold 4D button by the screen. */
+function pulseHaptics(strength,ms){
+  try{
+    var sc=document.getElementById('scene');
+    var ses=sc&&sc.renderer&&sc.renderer.xr?sc.renderer.xr.getSession():null;
+    if(!ses) return;
+    ses.inputSources.forEach(function(src){
+      var gp=src.gamepad; if(!gp) return;
+      try{
+        if(gp.vibrationActuator&&gp.vibrationActuator.playEffect){
+          var pr=gp.vibrationActuator.playEffect('dual-rumble',{duration:ms,strongMagnitude:strength,weakMagnitude:strength*0.7});
+          if(pr&&pr.catch) pr.catch(function(){});
+        }else if(gp.hapticActuators&&gp.hapticActuators[0]&&gp.hapticActuators[0].pulse){
+          gp.hapticActuators[0].pulse(strength,ms);
+        }
+      }catch(e){}
+    });
+  }catch(e){}
+}
+(function(){
+  var P=G('cinema'), PO=GO('cinema');
+  var grp=new THREE.Group(); PO.add(grp);
+  var seaGrp=new THREE.Group(); grp.add(seaGrp);
+  var fireGrp=new THREE.Group(); grp.add(fireGrp);
+  function fishMesh(color){
+    var g2=new THREE.Group();
+    var mat=new THREE.MeshStandardMaterial({color:color,roughness:0.45,metalness:0.1,emissive:color,emissiveIntensity:0.25,envMapIntensity:0.9,transparent:true});
+    var body=new THREE.Mesh(new THREE.SphereGeometry(0.09,14,10),mat);
+    body.scale.set(1.9,0.85,0.5); g2.add(body);
+    var tail=new THREE.Mesh(new THREE.ConeGeometry(0.06,0.13,8),mat);
+    tail.rotation.z=Math.PI/2; tail.position.x=-0.2; g2.add(tail);
+    var eye=new THREE.Mesh(new THREE.SphereGeometry(0.016,8,6),new THREE.MeshBasicMaterial({color:0x050505}));
+    eye.position.set(0.09,0.02,0.04); g2.add(eye);
+    g2.traverse(function(n){ n.frustumCulled=false; });
+    return {g:g2,mat:mat};
+  }
+  var fishCols4=[0xffa726,0x7ad0ff,0xff7a9e,0xffd95e,0xb0ff7a];
+  var fishes4=[];
+  for(var i=0;i<5;i++){
+    var fm=fishMesh(fishCols4[i%5]);
+    seaGrp.add(fm.g);
+    fishes4.push({mesh:fm.g,mat:fm.mat,T:11+i*1.7,off:i*0.19,lane:(i-2)*1.05,ph:i*1.93,reach:7.3+(i%3)*0.3});
+  }
+  var rayMat=new THREE.MeshStandardMaterial({color:0x44586a,roughness:0.5,metalness:0.15,emissive:0x1a2a3a,emissiveIntensity:0.35,envMapIntensity:0.9,transparent:true,side:THREE.DoubleSide});
+  var ray=new THREE.Group();
+  var wing=new THREE.Mesh(new THREE.SphereGeometry(0.55,16,10),rayMat);
+  wing.scale.set(1.0,0.1,1.6); ray.add(wing);
+  var rtail=new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.003,0.9,6),rayMat);
+  rtail.rotation.z=Math.PI/2; rtail.position.x=-0.85; ray.add(rtail);
+  ray.traverse(function(n){ n.frustumCulled=false; });
+  seaGrp.add(ray);
+  var rayCfg={mesh:ray,mat:rayMat,T:19,off:0.35,lane:0,ph:0.6,reach:8.2};
+  var EN=110, ePos=new Float32Array(EN*3), eSeed=new Float32Array(EN);
+  for(var ei=0;ei<EN;ei++){
+    eSeed[ei]=Math.random();
+    ePos[ei*3]=-12+(Math.random()-0.5)*7;
+    ePos[ei*3+1]=0.9+Math.random()*2.3;
+    ePos[ei*3+2]=-9.5+Math.random()*7.5;
+  }
+  var eGeo=new THREE.BufferGeometry();
+  eGeo.setAttribute('position',new THREE.BufferAttribute(ePos,3));
+  var eMat=new THREE.PointsMaterial({map:poolTex,color:0xffa050,size:0.075,transparent:true,opacity:0.85,blending:THREE.AdditiveBlending,depthWrite:false,sizeAttenuation:true});
+  var ePts=new THREE.Points(eGeo,eMat); ePts.frustumCulled=false;
+  fireGrp.add(ePts);
+  animProps.fourD={on:true,group:grp,seaGrp:seaGrp,fireGrp:fireGrp,fish:fishes4,ray:rayCfg,
+    embers:{pos:ePos,seed:eSeed,attr:eGeo.attributes.position},shakeT:0,nextMoment:0};
+  var btn=el('a-sphere',P,{position:'-6.72 1.3 -9.3',radius:0.1,
+    material:'color:#ffd95e; emissive:#c9a227; emissiveIntensity:0.9; metalness:0.9; roughness:0.2'});
+  var prevCUR=CUR; CUR='cinema';
+  makeInteractable(btn,'4d','4D effects — on / off');
+  CUR=prevCUR;
+  promptSign(P,-6.72,2.05,-9.3,'\u25B6 4D EFFECTS',0);
+})();
+</script>
 <script type="module">
 /* ============================================================
    REALISM LAYER 2 — HDRI environment light + real glTF furniture.
