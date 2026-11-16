@@ -2243,6 +2243,11 @@ function frameStep(t,deltaMs){
       var pmm=window.__panelMats[pmi]; pmm.envMapIntensity=pmm.userData.baseEnv+shm;
     }
   }
+  /* --- v6.2: ONE hardened stick snapshot per frame, taken before
+     anything that needs to know whether Deezy is driving: the 4D
+     seat-moment gate below and locomotion further down both read
+     this snapshot, so they can never disagree about the sticks. */
+  var snap62=readRigSticks();
   /* --- v6.1: 4D cinema — things come OUT of the screen --- */
   var fd=animProps.fourD;
   if(fd&&fd.group){
@@ -2285,9 +2290,16 @@ function frameStep(t,deltaMs){
       }
       eb.attr.needsUpdate=true;
     }
-    /* seat moments: controller rumble + a breath of room shake,
-       only while the player is actually in the cinema */
-    if(fd.on&&inCinema){
+    /* seat moments: controller rumble + a breath of room shake.
+       v6.2 gates, both hard: (1) a moment can only START while the
+       player is in the cinema AND both sticks are centered — and a
+       shake already running is cancelled the instant a stick moves,
+       so the room can never slide while Deezy is walking (the v6.1
+       world-group shake dragging under a moving player read exactly
+       like the old backward-pull bug); (2) the shake moves ONLY the
+       cinema room group, never the world group and never the rig,
+       so no other room, collider visual or the player can be dragged. */
+    if(fd.on&&inCinema&&!snap62.active){
       if(!fd.nextMoment) fd.nextMoment=t+2500;
       if(t>=fd.nextMoment){
         fd.nextMoment=t+7000+Math.random()*2500;
@@ -2296,10 +2308,14 @@ function frameStep(t,deltaMs){
       }
     }
     if(fd.shakeT>0){
-      fd.shakeT-=dt;
-      var sa=Math.max(0,fd.shakeT/0.45)*0.028;
-      world.object3D.position.set((Math.random()-0.5)*sa,(Math.random()-0.5)*sa*0.4,(Math.random()-0.5)*sa);
-      if(fd.shakeT<=0) world.object3D.position.set(0,0,0);
+      var cine62=GO('cinema');
+      if(snap62.active){ fd.shakeT=0; cine62.position.set(0,0,0); }
+      else{
+        fd.shakeT-=dt;
+        var sa=Math.max(0,fd.shakeT/0.45)*0.028;
+        cine62.position.set((Math.random()-0.5)*sa,(Math.random()-0.5)*sa*0.4,(Math.random()-0.5)*sa);
+        if(fd.shakeT<=0) cine62.position.set(0,0,0);
+      }
     }
   }
   /* --- room visibility (only nearby rooms draw) --- */
@@ -2318,27 +2334,25 @@ function frameStep(t,deltaMs){
       }
     }
   }
-  /* --- locomotion: IDENTICAL proven code to v3 / the test room --- */
-  var session=sceneEl.renderer&&sceneEl.renderer.xr?sceneEl.renderer.xr.getSession():null;
-  var srcL=null,srcR=null;
-  if(session){
-    var srcs=session.inputSources;
-    for(var i=0;i<srcs.length;i++){
-      if(srcs[i].handedness==='left') srcL=srcs[i];
-      else if(srcs[i].handedness==='right') srcR=srcs[i];
-    }
-  }
-  var axX=0,axY=0,turnAx=0;
-  function readPad(src){
-    if(!src||!src.gamepad) return null;
-    var gp=src.gamepad, ax=gp.axes||[];
-    var x=(ax.length>2?ax[2]:ax[0])||0, y=(ax.length>3?ax[3]:ax[1])||0;
-    return {x:x,y:y};
-  }
-  var pL=readPad(srcL), pR=readPad(srcR);
-  if(pL){ axX=pL.x; axY=pL.y; }
-  if(pR){ turnAx=pR.x; if(!pL&&(Math.abs(pR.x)>0.6||pR.y)) { axY=pR.y; } }
-  if(!session){ /* desktop fallback */
+  /* --- locomotion (v6.2): DIRECT-VECTOR movement ---
+     INVARIANT: pushing the left stick away from the body (axes[3]
+     NEGATIVE on the xr-standard gamepad) moves the rig ALONG the
+     camera's world forward vector; pulling it back moves against
+     it; stick X rides the camera's right vector. No yaw is ever
+     reconstructed and no sign table is consulted, so the forward
+     axis cannot silently invert. (What this replaces: a v4-era
+     yaw reconstruction — headYaw=atan2(...) fed into sin/cos — whose
+     forward term is the exact NEGATION of the camera-forward term,
+     while its strafe term matched; that is a forward/back-only
+     inversion, the reported symptom. The real v3 code was already
+     direct-vector; this restores that approach.) Input comes from
+     the frame's hardened snapshot (see readRigSticks): movement
+     ONLY from the left controller, turn ONLY from the right.
+     Velocity eases in/out (v3-style glide) so starts and stops
+     ramp instead of snapping to full speed. */
+  var session=snap62.sessionObj;
+  var axX=snap62.x, axY=snap62.y, turnAx=snap62.turn;
+  if(!session){ /* desktop fallback: W walks where the camera faces */
     axX=(keys['KeyD']?1:0)-(keys['KeyA']?1:0);
     axY=(keys['KeyS']?1:0)-(keys['KeyW']?1:0);
   }
@@ -2349,21 +2363,24 @@ function frameStep(t,deltaMs){
   /* smooth proportional turn (NEVER snap) */
   if(turnAx) rigYaw-=turnAx*1.7*dt;
   rig.object3D.rotation.y=rigYaw;
-  /* forward = where the HEAD looks (yaw only) */
-  var headYaw=rigYaw;
-  var camObj=cam.object3D;
-  if(camObj){
-    var q=new THREE.Quaternion();
-    camObj.getWorldQuaternion(q);
-    var fwd=new THREE.Vector3(0,0,-1).applyQuaternion(q);
-    fwd.y=0;
-    if(fwd.lengthSq()>0.001){ fwd.normalize(); headYaw=Math.atan2(-fwd.x,-fwd.z); }
-  }
-  var mx=(Math.sin(headYaw)*-axY)+(Math.cos(headYaw)*axX);
-  var mz=(Math.cos(headYaw)*-axY)+(-Math.sin(headYaw)*axX);
+  /* forward = the REAL camera's world direction, flattened to XZ.
+     (sceneEl.camera, not the cam entity's group: the group's world
+     direction is the +Z/behind axis — that confusion was v2's bug.) */
+  var camObj=sceneEl.camera||(cam.getObject3D?cam.getObject3D('camera'):null)||cam.object3D;
+  var fq=new THREE.Quaternion();
+  camObj.getWorldQuaternion(fq);
+  var fwdV=new THREE.Vector3(0,0,-1).applyQuaternion(fq);
+  fwdV.y=0;
+  if(fwdV.lengthSq()<0.001) fwdV.set(-Math.sin(rigYaw),0,-Math.cos(rigYaw));
+  fwdV.normalize();
+  var mv=rigMove(fwdV.x,fwdV.z,axX,axY);
   var speed=2.6;
-  var nx2=rig.object3D.position.x+mx*speed*dt;
-  var nz2=rig.object3D.position.z+mz*speed*dt;
+  var txV=mv.x*speed, tzV=mv.z*speed;
+  var kk=1-Math.exp(-dt*7);
+  velX+=(txV-velX)*kk; velZ+=(tzV-velZ)*kk;
+  if(!axX&&!axY&&Math.abs(velX)<0.01&&Math.abs(velZ)<0.01){ velX=0; velZ=0; }
+  var nx2=rig.object3D.position.x+velX*dt;
+  var nz2=rig.object3D.position.z+velZ*dt;
   var RADIUS=0.45;
   function hitsWall(px,pz){
     for(var ci=0;ci<colliders.length;ci++){
@@ -2372,8 +2389,8 @@ function frameStep(t,deltaMs){
     }
     return false;
   }
-  if(!hitsWall(nx2,rig.object3D.position.z)) rig.object3D.position.x=nx2;
-  if(!hitsWall(rig.object3D.position.x,nz2)) rig.object3D.position.z=nz2;
+  if(!hitsWall(nx2,rig.object3D.position.z)) rig.object3D.position.x=nx2; else velX=0;
+  if(!hitsWall(rig.object3D.position.x,nz2)) rig.object3D.position.z=nz2; else velZ=0;
   /* house bounds */
   rig.object3D.position.x=Math.max(-17.2,Math.min(17.2,rig.object3D.position.x));
   rig.object3D.position.z=Math.max(-19.2,Math.min(19.2,rig.object3D.position.z));
@@ -2403,9 +2420,66 @@ function frameStep(t,deltaMs){
 var sceneEl=document.getElementById('scene');
 var rig=document.getElementById('rig');
 var cam=document.getElementById('cam');
-var keys={}, rigYaw=0;
+var keys={}, rigYaw=0, velX=0, velZ=0;
 window.addEventListener('keydown',function(e){ keys[e.code]=true; });
 window.addEventListener('keyup',function(e){ keys[e.code]=false; });
+/* ================= v6.2 INPUT PATH + MOVE MATH =================
+   readRigSticks is the ONLY place session input sources are read
+   for driving. A source counts as a controller stick only if ALL
+   of these hold: handedness matches, targetRayMode is
+   'tracked-pointer', it is NOT a hand (src.hand set — the v5
+   hand-tracking sources are ignored for driving), and it actually
+   has a gamepad. Sources are re-derived EVERY frame, so a source
+   set that changes mid-session can never leave a stale or crossed
+   stick in charge. Movement comes ONLY from the left controller
+   and turning ONLY from the right: the old "right stick drives
+   movement when no left pad is seen" fallback is REMOVED — with
+   the old handedness-only selection, a hand source landing after
+   the left controller in inputSources silently replaced it, the
+   left pad read as absent, and that fallback handed movement to
+   the turn stick. The fallback could only ever engage in such
+   corrupted states, so it has no legitimate job; removing it
+   deletes the whole crossed-sticks class of bug. */
+function pickStickSource(session,hand){
+  var srcs=session.inputSources||[];
+  var found=null;
+  for(var i=0;i<srcs.length;i++){
+    var s=srcs[i];
+    if(!s||s.handedness!==hand) continue;
+    if(s.hand) continue;
+    if(s.targetRayMode!=='tracked-pointer') continue;
+    if(!s.gamepad) continue;
+    found=s;
+  }
+  return found;
+}
+function readPadAxes(src){
+  if(!src||!src.gamepad) return null;
+  var ax=src.gamepad.axes||[];
+  return { x:(ax.length>2?ax[2]:ax[0])||0, y:(ax.length>3?ax[3]:ax[1])||0 };
+}
+function readRigSticks(){
+  var out={x:0,y:0,turn:0,active:false,sessionObj:null};
+  var ses=(sceneEl&&sceneEl.renderer&&sceneEl.renderer.xr)?sceneEl.renderer.xr.getSession():null;
+  if(!ses) return out;
+  out.sessionObj=ses;
+  var pL=readPadAxes(pickStickSource(ses,'left'));
+  var pR=readPadAxes(pickStickSource(ses,'right'));
+  if(pL){ out.x=pL.x; out.y=pL.y; }
+  if(pR){ out.turn=pR.x; }
+  if(Math.abs(out.x)>0.18||Math.abs(out.y)>0.18||Math.abs(out.turn)>0.18) out.active=true;
+  return out;
+}
+/* Pure move math: unit stick input -> unit move vector on XZ.
+   right = forward x up, which on XZ is (-fwdZ, fwdX).
+   move = forward*(-axY) + right*(axX): axY is the raw stick Y,
+   NEGATIVE when pushed away from the body, so -axY is exactly
+   the forward amount. Pushing forward can only ever produce a
+   vector parallel to the camera's forward — see the v6.2 test. */
+function rigMove(fwdX,fwdZ,axX,axY){
+  var rx=-fwdZ, rz=fwdX;
+  return { x:fwdX*(-axY)+rx*axX, z:fwdZ*(-axY)+rz*axX };
+}
 AFRAME.registerComponent('locomotion',{
   tick:function(time,delta){ frameStep(time,delta); }
 });
