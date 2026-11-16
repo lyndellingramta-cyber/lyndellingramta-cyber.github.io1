@@ -200,7 +200,7 @@ function setLoadMsg(t){ if(loadmsgEl) loadmsgEl.textContent=t; }
 window.__setLoadMsg=setLoadMsg;
 var texMgr=new THREE.LoadingManager();
 texMgr.onProgress=function(u,loaded,total){ setLoadMsg('Loading real textures… '+loaded+' / '+total); };
-texMgr.onLoad=function(){ setLoadMsg('Textures ready — loading furniture models + HDRI light…'); };
+texMgr.onLoad=function(){ window.__texDone=true; setLoadMsg('Textures ready — loading furniture models + HDRI light…'); };
 texMgr.onError=function(u){ setLoadMsg('A texture failed ('+u.split('/').pop()+') — world still works.'); };
 var texLoader=new THREE.TextureLoader(texMgr);
 var MAXANISO=16; try{ MAXANISO=Math.min(16, document.querySelector('a-scene').renderer.capabilities.getMaxAnisotropy()); }catch(e){}
@@ -213,6 +213,7 @@ function loadTex(url,srgb,rx,ry){
   return t;
 }
 var PH='https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/';
+var PH2K='https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/';
 var ACG='https://f003.backblazeb2.com/file/ambientCG-Web/media/surface-preview/Marble006/';
 function marbleMatFor(rx,ry){
   var m=new THREE.MeshStandardMaterial({color:0xffffff,roughness:1.0,metalness:0.05,envMapIntensity:1.05});
@@ -227,7 +228,7 @@ var marbleMat=marbleMatFor(3,2.5);
 function panelMat(rx,ry,tint){
   var m=new THREE.MeshStandardMaterial({color:tint||0x8f8578,roughness:1.0,metalness:0.05,envMapIntensity:0.65});
   m.userData.keepEnv=true;
-  m.map=loadTex(PH+'dark_paneled_wood/dark_paneled_wood_diff_2k.jpg',true,rx,ry);
+  m.map=loadTex(PH2K+'dark_paneled_wood/dark_paneled_wood_diff_2k.jpg',true,rx,ry);
   m.normalMap=loadTex(PH+'dark_paneled_wood/dark_paneled_wood_nor_gl_1k.jpg',false,rx,ry);
   m.roughnessMap=loadTex(PH+'dark_paneled_wood/dark_paneled_wood_rough_1k.jpg',false,rx,ry);
   m.aoMap=loadTex(PH+'dark_paneled_wood/dark_paneled_wood_ao_1k.jpg',false,rx,ry);
@@ -244,6 +245,11 @@ function goldMetalMat(){
   return m;
 }
 var goldMat=goldMetalMat();
+/* v6: SMOOTH polished gold for hero surfaces — the diamond-plate goldMat
+   read as a rusty loading ramp on the pool slide and headboard wall
+   (screenshots 184619/184344). Plate texture stays on small trim only. */
+var goldSmoothMat=new THREE.MeshStandardMaterial({color:0xd9ab4a,roughness:0.27,metalness:1.0,envMapIntensity:1.35});
+goldSmoothMat.userData.keepEnv=true;
 function woodMatFor(rx,ry,tint){
   var m=new THREE.MeshStandardMaterial({color:tint||0xa89880,roughness:1.0,metalness:0.0,envMapIntensity:0.6});
   m.userData.keepEnv=true;
@@ -257,7 +263,7 @@ function woodMatFor(rx,ry,tint){
 function rockMatFor(rx,ry,tint){
   var m=new THREE.MeshStandardMaterial({color:tint||0x8a8a8a,roughness:1.0,metalness:0.0,envMapIntensity:0.45});
   m.userData.keepEnv=true;
-  m.map=loadTex(PH+'dark_rock/dark_rock_diff_2k.jpg',true,rx,ry);
+  m.map=loadTex(PH2K+'dark_rock/dark_rock_diff_2k.jpg',true,rx,ry);
   m.normalMap=loadTex(PH+'dark_rock/dark_rock_nor_gl_1k.jpg',false,rx,ry);
   m.roughnessMap=loadTex(PH+'dark_rock/dark_rock_rough_1k.jpg',false,rx,ry);
   return m;
@@ -322,16 +328,17 @@ function waterTex(rx,ry){
 var fallStreakCvs=(function(){
   var c=document.createElement('canvas'); c.width=256; c.height=256;
   var g=c.getContext('2d'); g.clearRect(0,0,256,256);
-  for(var i=0;i<70;i++){
-    var x=Math.random()*256, w=1+Math.random()*3.2, a=0.25+Math.random()*0.6;
+  for(var i=0;i<44;i++){
+    var x=Math.random()*256, w=2+Math.random()*4.5, a=0.2+Math.random()*0.5;
     var grad=g.createLinearGradient(0,0,0,256);
     grad.addColorStop(0,'rgba(255,255,255,'+a+')');
     grad.addColorStop(0.5,'rgba(255,255,255,'+(a*0.75)+')');
     grad.addColorStop(1,'rgba(255,255,255,'+a+')');
     g.fillStyle=grad; g.fillRect(x,0,w,256);
   }
-  for(var j=0;j<260;j++){ g.fillStyle='rgba(255,255,255,'+(0.1+Math.random()*0.3)+')';
-    g.fillRect(Math.random()*256,Math.random()*256,1.6,3+Math.random()*7); }
+  var sheen=g.createLinearGradient(0,0,256,0);
+  sheen.addColorStop(0,'rgba(255,255,255,0)'); sheen.addColorStop(0.5,'rgba(255,255,255,0.10)'); sheen.addColorStop(1,'rgba(255,255,255,0)');
+  g.fillStyle=sheen; g.fillRect(0,0,256,256);
   return c;
 })();
 function fallTex(rx,ry){
@@ -353,6 +360,32 @@ var foamCvs=(function(){
   }
   return c;
 })();
+/* v6: palm frond — canvas-drawn leaflets on a bent plane (alpha-tested),
+   replacing the flat box "leaves" that read as pale ovals on the headset */
+var frondCvs=(function(){
+  var c=document.createElement('canvas'); c.width=256; c.height=128;
+  var g=c.getContext('2d'); g.clearRect(0,0,256,128);
+  g.lineCap='round';
+  for(var s=0;s<26;s++){
+    var t=s/25, x=8+t*240, len=44*(1-t*0.55)+8, wdt=3.4*(1-t*0.5);
+    var gr=g.createLinearGradient(x,64,x,64+len);
+    gr.addColorStop(0,'#4c8a34'); gr.addColorStop(1,'#7cb554');
+    g.strokeStyle=gr; g.lineWidth=wdt;
+    g.beginPath(); g.moveTo(x,64); g.quadraticCurveTo(x+4,64+len*0.6,x+9,64+len); g.stroke();
+    g.beginPath(); g.moveTo(x,64); g.quadraticCurveTo(x+4,64-len*0.6,x+9,64-len); g.stroke();
+  }
+  g.strokeStyle='#3a6b27'; g.lineWidth=4;
+  g.beginPath(); g.moveTo(2,64); g.lineTo(254,64); g.stroke();
+  return c;
+})();
+var frondTex=new THREE.CanvasTexture(frondCvs); frondTex.colorSpace=THREE.SRGBColorSpace; frondTex.anisotropy=4;
+var leafMat2=new THREE.MeshStandardMaterial({map:frondTex,transparent:true,alphaTest:0.4,side:THREE.DoubleSide,roughness:0.9,metalness:0});
+leafMat2.userData.keepEnv=true;
+var frondGeo=new THREE.PlaneGeometry(1.6,0.55,6,1);
+frondGeo.translate(0.8,0,0);
+(function(){ var pos=frondGeo.attributes.position;
+  for(var vi=0;vi<pos.count;vi++){ var vx=pos.getX(vi); var tt=vx/1.6; pos.setY(vi,pos.getY(vi)-0.5*tt*tt); }
+  frondGeo.computeVertexNormals(); })();
 /* caustics: voronoi edge glow (classic water-light pattern) */
 var causticsCvs=(function(){
   var S=128, c=document.createElement('canvas'); c.width=c.height=S;
@@ -594,7 +627,7 @@ var SCREEN_NAMES={gold:'Drifting Gold Patterns',rain:'Indoor Rain',stars:'Starfi
 function makeScreen(parentEnt,x,y,z,ry,w,h,roomName){
   var g=el('a-entity',parentEnt,{position:x+' '+y+' '+z,rotation:'0 '+ry+' 0'});
   var fr=box(g,0,0,-0.06,w+0.35,h+0.35,0.12,GOLD,{metal:0.9,rough:0.25});
-  applyPBR(fr,goldMat);
+  applyPBR(fr,goldSmoothMat);
   var p=plane(g,0,0,0,w,h,0x000000,{rough:0.4,metal:0.1});
   var canvas=document.createElement('canvas'); canvas.width=1024; canvas.height=512;
   var scr={el:p,canvas:canvas,ctx:canvas.getContext('2d'),tex:null,mode:0,
@@ -743,7 +776,7 @@ CUR='foyer';
   lightPool(PO,0,15,3.2,0.55);
   /* planters (real plant models land here via the model loader) */
   [-4.6,4.6].forEach(function(px){
-    mesh(new THREE.CylinderGeometry(0.42,0.34,1,14),goldMat,px,0.5,11,0,0,0,PO);
+    mesh(new THREE.CylinderGeometry(0.42,0.34,1,14),goldSmoothMat,px,0.5,11,0,0,0,PO);
     contactShadow(PO,px,11,1.3,1.3,0.7);
   });
   sconce(P,-5.9,3.1,15); sconce(P,5.9,3.1,15);
@@ -764,8 +797,8 @@ CUR='living';
   addCollider(0,7.6,5.2,1.3); addCollider(0,5.75,1.8,1.1);
   addCollider(-3.6,6.3,1.15,1.15); addCollider(3.6,6.3,1.15,1.15);
   /* gold cushions on the (model) sofa — his films: black sofa, gold pillows */
-  var cg1=gbox(PO,-1.2,0.66,7.5,1.1,0.2,0.8,velvetGoldMat); cg1.rotation.x=-0.15;
-  var cg2=gbox(PO, 1.2,0.66,7.5,1.1,0.2,0.8,velvetGoldMat); cg2.rotation.x=-0.15;
+  var cg1=gbox(PO,-1.2,0.66,7.5,1.1,0.2,0.8,velvetRedMat); cg1.rotation.x=-0.15;
+  var cg2=gbox(PO, 1.2,0.66,7.5,1.1,0.2,0.8,velvetRedMat); cg2.rotation.x=-0.15;
   /* gold floor lamps (correct scale) */
   [-4.6,4.6].forEach(function(px){
     mesh(new THREE.CylinderGeometry(0.05,0.07,1.7,10),goldMat,px,0.85,8.6,0,0,0,PO);
@@ -784,7 +817,7 @@ CUR='living';
   var base=box(g,0,0.25,0,2.9,0.5,0.22,GOLD,{metal:0.9,rough:0.3});
   applyPBR(base,goldMat);
   var scr=box(g,0,1.15,0,2.7,1.5,0.1,0x05070c,{emissive:0x1b3a55,ei:0.7});
-  plane(g,0,1.15,0.07,2.45,1.28,0x0d2233,{emissive:0x2e6ea8,ei:0.55});
+  plane(g,0,1.15,0.07,2.45,1.28,0x05070c,{emissive:0x0d2233,ei:0.22});
   makeInteractable(scr,'tv','Floor TV — raise / lower');
   promptSign(P,0,2.6,3.9,'\u25B6 FLOOR TV',0);
   animProps.tv={group:g,y:-1.7,target:-1.7,up:0.15,down:-1.7,on:false};
@@ -871,7 +904,7 @@ CUR='kitchen';
   addCollider(-14.5,0.95,5.5,1.2); addCollider(-17.2,5,1.2,7.1);
   /* stove + gold hood */
   mesh(new THREE.BoxGeometry(0.95,0.04,1.4),new THREE.MeshStandardMaterial({color:0x050505,roughness:0.3,metalness:0.4,emissive:0x331a00,emissiveIntensity:0.4}),-17.2,1.19,3.4,0,0,0,PO);
-  mesh(new THREE.BoxGeometry(1,1,1),goldMat,-17.2,2.9,3.4,0,0,0,PO);
+  mesh(new THREE.BoxGeometry(1,1,1),goldSmoothMat,-17.2,2.9,3.4,0,0,0,PO);
   /* island with marble top + stools */
   mesh(new THREE.BoxGeometry(3.4,1.1,1.6),cabMat,-13,0.55,6.8,0,0,0,PO);
   mesh(new THREE.BoxGeometry(3.6,0.08,1.8),topMat,-13,1.14,6.8,0,0,0,PO);
@@ -931,7 +964,7 @@ CUR='kitchen';
   }
   mesh(new THREE.PlaneGeometry(2.5,2.2),marbleMatC(1,1),hole.x,-2.08,hole.z+0.6,-Math.PI/2,0,0,PO);
   var door=plane(P,hole.x,-1,hole.z+1.68,2,2,GOLD,{emissive:GOLD,ei:0.85,ry:180});
-  applyPBR(door,goldMat);
+  applyPBR(door,goldSmoothMat);
   label(P,hole.x,-0.6,hole.z+1.6,'TO THE POOL GROTTO',3.4,'#000000',180);
   var g=el('a-entity',P,{position:hole.x+' 0 '+hole.z});
   var blockTop=box(g,0,0.58,0,2.6,1.16,3.2,0x1d1d1d,{rough:0.35});
@@ -1018,12 +1051,12 @@ CUR='bedroom';
   /* big bed — his film: black bedding, gold trim, gold-pattern pillows */
   var bedMat=woodMatC(2,1,0x3a2c1e);
   mesh(new THREE.BoxGeometry(4.6,0.7,3.2),bedMat,-12,0.35,-17.5,0,0,0,PO);
-  mesh(new THREE.BoxGeometry(4.3,0.25,2.9),velvetMatFor(2,2,0xb8b0a0),-12,0.85,-17.5,0,0,0,PO);
+  mesh(new THREE.BoxGeometry(4.3,0.25,2.9),velvetMatFor(2,2,0x35322c),-12,0.85,-17.5,0,0,0,PO);
   mesh(new THREE.BoxGeometry(4.35,0.16,2.0),velvetMatFor(2,1,0x17171c),-12,0.95,-16.9,0,0,0,PO);
   gbox(PO,-12,1.02,-15.95,4.35,0.05,0.08,goldMat);
-  mesh(new THREE.BoxGeometry(4.6,1.7,0.3),goldMat,-12,1.05,-18.6,0,0,0,PO);
-  mesh(new THREE.BoxGeometry(1.7,0.22,0.8),velvetMatFor(1,1,0xf2ead8),-13.2,1.05,-17.9,0,0,0,PO);
-  mesh(new THREE.BoxGeometry(1.7,0.22,0.8),velvetMatFor(1,1,0xf2ead8),-10.8,1.05,-17.9,0,0,0,PO);
+  mesh(new THREE.BoxGeometry(4.6,1.7,0.3),velvetRedMat,-12,1.05,-18.6,0,0,0,PO);
+  mesh(new THREE.BoxGeometry(1.7,0.22,0.8),velvetGoldMat,-13.2,1.05,-17.9,0,0,0,PO);
+  mesh(new THREE.BoxGeometry(1.7,0.22,0.8),velvetGoldMat,-10.8,1.05,-17.9,0,0,0,PO);
   mesh(new THREE.BoxGeometry(1.1,0.18,0.6),velvetGoldMat,-13.2,1.12,-17.2,0,0,0,PO);
   mesh(new THREE.BoxGeometry(1.1,0.18,0.6),velvetGoldMat,-10.8,1.12,-17.2,0,0,0,PO);
   contactShadow(PO,-12,-17.5,5.4,4,0.85);
@@ -1149,25 +1182,28 @@ var jacuzziWaterEnt, jacuzziBubbles=[];
   mesh(new THREE.BoxGeometry(3.6,1,0.08),tankMat,cx,-0.55,cz+1.48,0,0,0,PO);
   mesh(new THREE.BoxGeometry(0.08,1,3),tankMat,cx-1.78,-0.55,cz,0,0,0,PO);
   mesh(new THREE.BoxGeometry(0.08,1,3),tankMat,cx+1.78,-0.55,cz,0,0,0,PO);
-  var tankWaterMat=new THREE.MeshStandardMaterial({color:0x1a6ea8,transparent:true,opacity:0.45,
+  var tankWaterMat=new THREE.MeshStandardMaterial({color:0x1a6ea8,transparent:true,opacity:0.38,
     roughness:0.1,emissive:0x0d4a66,emissiveIntensity:0.5,envMapIntensity:1.1});
   tankWaterMat.userData.keepEnv=true;
   mesh(new THREE.BoxGeometry(3.5,0.85,2.9),tankWaterMat,cx,-0.5,cz,0,0,0,PO).castShadow=false;
   for(var i=0;i<7;i++){
-    el('a-cone',P,{position:(cx-1.4+i*0.45)+' -0.8 '+(cz+(i%2?0.8:-0.7)),radius:0.14,height:0.4,
+    el('a-cone',P,{position:(cx-1.4+i*0.45)+' -0.84 '+(cz+(i%2?0.8:-0.7)),radius:0.11,height:0.32,
       material:'color:#'+(i%2?'ff7a4d':'ffd95e')+'; roughness:0.8'});
   }
   var fishCols=[0xffa726,0xffd95e,0x7ad0ff,0xff7a9e,0xb0ff7a];
   for(var f=0;f<7;f++){
     var fish=el('a-entity',P,{});
-    el('a-cone',fish,{position:'0 0 0',rotation:'0 0 -90',radius:0.07,height:0.34,
-      material:'color:#'+fishCols[f%5].toString(16).padStart(6,'0')+'; emissive:#'+fishCols[f%5].toString(16).padStart(6,'0')+'; emissiveIntensity:0.35'});
-    el('a-sphere',fish,{position:'0.05 0.03 0.05',radius:0.02,material:'color:#000000'});
+    var fcol='#'+fishCols[f%5].toString(16).padStart(6,'0');
+    el('a-sphere',fish,{position:'0 0 0',radius:0.07,scale:'1.9 0.85 0.5',
+      material:'color:'+fcol+'; emissive:'+fcol+'; emissiveIntensity:0.2'});
+    el('a-cone',fish,{position:'-0.17 0 0',rotation:'0 0 90',radius:0.05,height:0.1,
+      material:'color:'+fcol+'; emissive:'+fcol+'; emissiveIntensity:0.2'});
+    el('a-sphere',fish,{position:'0.08 0.02 0.032',radius:0.015,material:'color:#000000'});
     fishes.push({el:fish,cx:cx,cz:cz,y:-0.45-(f%3)*0.14,r:0.9+(f%4)*0.22,
                  sp:0.25+(f%3)*0.12,ph:f*0.9,underFloor:true});
   }
   var glass=mesh(new THREE.PlaneGeometry(3.6,3),
-    new THREE.MeshStandardMaterial({color:0xbfe8ff,transparent:true,opacity:0.26,roughness:0.05,metalness:0.4,envMapIntensity:1.4}),
+    new THREE.MeshStandardMaterial({color:0xbfe8ff,transparent:true,opacity:0.18,roughness:0.05,metalness:0.4,envMapIntensity:1.4}),
     cx,0.055,cz,-Math.PI/2,0,0,PO);
   glass.castShadow=false;
   gbox(PO,cx,0.05,cz-1.56,3.85,0.07,0.13); gbox(PO,cx,0.05,cz+1.56,3.85,0.07,0.13);
@@ -1179,12 +1215,17 @@ var jacuzziWaterEnt, jacuzziBubbles=[];
   var P=G('bathroom');
   var g=el('a-entity',P,{position:'-5.8 0 -12.5',rotation:'0 90 0'});
   box(g,0,2,0,3.6,2,0.7,0x0a3040,{opacity:0.9});
-  box(g,0,2,0.1,3.3,1.7,0.5,0x1a6ea8,{opacity:0.5,emissive:0x0d4a66,ei:0.5});
+  box(g,0,2,0.1,3.3,1.7,0.5,0x1a6ea8,{opacity:0.42,emissive:0x0d4a66,ei:0.5});
   var tf=box(g,0,3.1,0,3.8,0.12,0.85,GOLD,{metal:0.95}); applyPBR(tf,goldMat);
   var bf=box(g,0,0.9,0,3.8,0.12,0.85,GOLD,{metal:0.95}); applyPBR(bf,goldMat);
   for(var f=0;f<4;f++){
-    var fish=el('a-cone',g,{position:(-1.2+f*0.7)+' '+(2+(f%2)*0.5)+' 0.1',rotation:'0 0 -90',radius:0.06,height:0.3,
-      material:'color:#ffa726; emissive:#ff8f1f; emissiveIntensity:0.4'});
+    var fish=el('a-entity',g,{position:(-1.2+f*0.7)+' '+(2+(f%2)*0.5)+' 0.1'});
+    var wcol='#'+['ffa726','ffd95e','7ad0ff','ff7a9e'][f%4];
+    el('a-sphere',fish,{position:'0 0 0',radius:0.055,scale:'0.55 1.9 0.8',
+      material:'color:'+wcol+'; emissive:'+wcol+'; emissiveIntensity:0.2'});
+    el('a-cone',fish,{position:'0 -0.15 0',rotation:'180 0 0',radius:0.05,height:0.1,
+      material:'color:'+wcol+'; emissive:'+wcol+'; emissiveIntensity:0.2'});
+    el('a-sphere',fish,{position:'0.028 0.07 0.03',radius:0.014,material:'color:#000000'});
     fishes.push({el:fish,cx:0,cz:0,y:0,r:0,wallTank:{g:g,baseX:-1.2+f*0.7,baseY:2+(f%2)*0.5,ph:f*1.4}});
   }
 })();
@@ -1194,11 +1235,13 @@ var airDry={on:false,timer:null,streams:[]};
   var P=G('bathroom'), PO=GO('bathroom');
   var cx=4.6, cz=-18.2;
   var glassCyl=mesh(new THREE.CylinderGeometry(0.85,0.85,3,20,1,true),
-    new THREE.MeshStandardMaterial({color:0xbfe8ff,transparent:true,opacity:0.2,roughness:0.05,metalness:0.2,side:THREE.DoubleSide,envMapIntensity:1.3}),
+    new THREE.MeshStandardMaterial({color:0xbfe8ff,transparent:true,opacity:0.12,roughness:0.05,metalness:0.2,side:THREE.DoubleSide,envMapIntensity:1.3}),
     cx,1.5,cz,0,0,0,PO);
+  mesh(new THREE.BoxGeometry(0.05,3,0.05),goldSmoothMat,cx-0.85,1.5,cz,0,0,0,PO);
+  mesh(new THREE.BoxGeometry(0.05,3,0.05),goldSmoothMat,cx+0.85,1.5,cz,0,0,0,PO);
   glassCyl.castShadow=false;
-  mesh(new THREE.CylinderGeometry(0.9,0.9,0.1,20),goldMat,cx,3.02,cz,0,0,0,PO);
-  mesh(new THREE.CylinderGeometry(0.9,0.9,0.1,20),goldMat,cx,0.05,cz,0,0,0,PO);
+  mesh(new THREE.CylinderGeometry(0.9,0.9,0.1,20),goldSmoothMat,cx,3.02,cz,0,0,0,PO);
+  mesh(new THREE.CylinderGeometry(0.9,0.9,0.1,20),goldSmoothMat,cx,0.05,cz,0,0,0,PO);
   for(var s=0;s<6;s++){
     var st=cyl(P,cx+(s%3-1)*0.4,2.2,cz+(Math.floor(s/3)?0.4:-0.4),0.02,0.02,1.3,0xffffff,{opacity:0.0});
     airDry.streams.push(st);
@@ -1245,7 +1288,7 @@ var holoSpinner;
   /* curved screen (cylinder segment) */
   el('a-cylinder',P,{position:'12 1.9 -11.2',radius:3.4,height:2.4,'open-ended':true,
     'theta-start':200,'theta-length':110,
-    material:'color:#0d2233; emissive:#2e6ea8; emissiveIntensity:0.6; side:double; roughness:0.3'});
+    material:'color:#0d2233; emissive:#2e6ea8; emissiveIntensity:0.3; side:double; roughness:0.3'});
   /* holographic game table + rotating hologram */
   mesh(new THREE.CylinderGeometry(1.5,1.7,1.1,20),new THREE.MeshStandardMaterial({color:0x14141f,roughness:0.3,metalness:0.7,envMapIntensity:0.9}),12,0.55,-14.5,0,0,0,PO);
   contactShadow(PO,12,-14.5,3.6,3.6,0.8);
@@ -1280,7 +1323,7 @@ var holoSpinner;
 CUR='cinema';
 (function(){
   var P=G('cinema'), PO=GO('cinema');
-  var seatMat=leatherMatFor(1,1,0x4a3f42);
+  var seatMat=leatherMatFor(1,1,0x232326);
   var stripMat=new THREE.MeshStandardMaterial({color:0xd83a2e,emissive:0xd83a2e,emissiveIntensity:1.2});
   for(var row=0;row<3;row++){
     for(var st2=0;st2<5;st2++){
@@ -1426,9 +1469,9 @@ var falls=[];
   waters.poolfall={on:true,visuals:[fallEnt],label:'Pool waterfall'};
   /* slide into the pool */
   var slide=box(P,16.8,1.1,-1.6,0.9,0.18,3.4,0xffd95e,{emissive:GOLD,ei:0.25,rough:0.3});
-  applyPBR(slide,goldMat);
+  applyPBR(slide,goldSmoothMat);
   slide.setAttribute('rotation','-24 0 0');
-  mesh(new THREE.BoxGeometry(0.9,1.4,0.18),goldMat,16.8,0.5,-0.4,0,0,0,PO);
+  mesh(new THREE.BoxGeometry(0.9,1.4,0.18),goldSmoothMat,16.8,0.5,-0.4,0,0,0,PO);
   label(P,16.8,2.6,-1.4,'SLIDE',3,'#ffd95e',180);
   /* loungers */
   [8.6,15.4].forEach(function(lx){
@@ -1439,9 +1482,8 @@ var falls=[];
   /* palms (organic, layered rock + greenery) */
   [6.7,17.3].forEach(function(px){
     mesh(new THREE.CylinderGeometry(0.09,0.13,1.8,8),trunkMat,px,0.9,-8.8,0,0,0,PO);
-    for(var lf=0;lf<5;lf++){ var la=lf/5*6.283;
-      var leaf=mesh(new THREE.BoxGeometry(1.1,0.04,0.3),leafMat,px+Math.cos(la)*0.55,2.0,-8.8+Math.sin(la)*0.55,0,-la,0,PO);
-      leaf.rotation.z=-0.32;
+    for(var lf=0;lf<7;lf++){ var la=lf/7*6.283+px;
+      mesh(frondGeo,leafMat2,px,1.86+((lf%3)*0.07),-8.8,0,-la,0,PO);
     }
     contactShadow(PO,px,-8.8,1,1,0.6);
     addCollider(px,-8.8,0.4,0.4);
@@ -1453,6 +1495,7 @@ var falls=[];
     lightPool(PO,px,-1.9,1.1,0.4);
   });
   sconce(P,8.35,3.2,-9.6); sconce(P,15.65,3.2,-9.6);
+  var grottoGlow=new THREE.PointLight(0x7a3ae0,0.65,17,1.8); grottoGlow.position.set(12,3.8,-4.5); PO.add(grottoGlow);
 })();
 /* ================= POOL: SWIM-UP BAR + LAZY RIVER ================= */
 (function(){
@@ -1791,7 +1834,7 @@ var vidCardTex=new THREE.CanvasTexture(vidCardCvs); vidCardTex.colorSpace=THREE.
 var vidMat=new THREE.MeshBasicMaterial({map:vidCardTex});
 var vidPlaneTV=mesh(new THREE.PlaneGeometry(2.45,1.28),vidMat,0,1.15,0.085,0,0,0,animProps.tv.group.object3D);
 var vidPlaneCinema=mesh(new THREE.PlaneGeometry(8.3,2.92),vidMat,-12,2.6,-9.76,0,0,0,GO('cinema'));
-vidPlaneTV.visible=false; vidPlaneCinema.visible=false;
+vidPlaneTV.visible=true; vidPlaneCinema.visible=true; /* v6: poster card shows until a channel plays */
 function initVideo(){
   if(vidEl) return;
   vidEl=document.createElement('video');
@@ -1799,6 +1842,7 @@ function initVideo(){
   vidEl.src=VID_CHANNELS[vidIdx].src;
   vidTex=new THREE.VideoTexture(vidEl); vidTex.colorSpace=THREE.SRGBColorSpace;
   vidEl.addEventListener('playing',function(){ vidMat.map=vidTex; vidMat.needsUpdate=true; });
+  vidEl.addEventListener('error',function(){ vidMat.map=vidCardTex; vidMat.needsUpdate=true; });
 }
 function vidShow(){ vidPlaneTV.visible=true; vidPlaneCinema.visible=true; }
 function vidPlayPause(){
@@ -2319,11 +2363,64 @@ function applyEnvironment(){
   }catch(e){ /* non-fatal */ }
 }
 
-const loader = new GLTFLoader();
+const modelMgr = new THREE.LoadingManager();
+window.__modelErrors = [];
+modelMgr.onError = (u)=>{ window.__modelErrors.push(u); };
+/* v6: Poly Haven does not serve these models' texture JPGs at all —
+   every one of the 37 texture URLs in the .gltf files HEAD-checks 404.
+   Rewrite the dead texture URLs to a 1px data URI so the loader wastes
+   no bandwidth on them; the meshes get dressed in fallback materials. */
+modelMgr.setURLModifier((u)=>{
+  if(u.indexOf('/textures/') >= 0 && /\.jpg($|\?)/.test(u))
+    return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  return u;
+});
+const loader = new GLTFLoader(modelMgr);
 const cache = {};
 function loadModel(url){
   if(!cache[url]) cache[url] = loader.loadAsync(url);
   return cache[url];
+}
+/* v6 fallback PBR materials, matched per furniture piece (his films:
+   black leather sofas/chairs, deep red accents, dark wood tables,
+   brass lamp fittings, green plant leaves, cream ceramic) */
+function stdMat(o){ const m = new THREE.MeshStandardMaterial(o); m.envMapIntensity = 0.75; return m; }
+const MATLIB = {
+  blackLeather: ()=>stdMat({color:0x1b1b20, roughness:0.5, metalness:0.05}),
+  redLeather:   ()=>stdMat({color:0x3d1013, roughness:0.48, metalness:0.05}),
+  redVelvet:    ()=>stdMat({color:0x5e1220, roughness:0.95, metalness:0}),
+  darkWood:     ()=>stdMat({color:0x2e2015, roughness:0.42, metalness:0.08}),
+  brass:        ()=>stdMat({color:0xc9a227, roughness:0.32, metalness:1.0}),
+  lampGlass:    ()=>stdMat({color:0xfff1d4, roughness:0.35, metalness:0, emissive:0xffc98a, emissiveIntensity:0.5}),
+  leafGreen:    ()=>stdMat({color:0x2f6b24, roughness:0.9, metalness:0}),
+  terra:        ()=>stdMat({color:0x74522f, roughness:0.8, metalness:0.02}),
+  ceramic:      ()=>stdMat({color:0xe9e1cd, roughness:0.22, metalness:0.02})
+};
+const PROFILES = {
+  sofa_03:{main:'blackLeather', rules:[[/pillow|cushion/i,'redVelvet'],[/wood|leg/i,'darkWood']]},
+  modern_arm_chair_01:{main:'blackLeather', rules:[[/pillow/i,'redVelvet'],[/leg|wood/i,'darkWood']]},
+  modern_coffee_table_01:{main:'darkWood', rules:[]},
+  side_table_01:{main:'darkWood', rules:[]},
+  modern_ceiling_lamp_01:{main:'lampGlass', rules:[[/arm|metal|stem/i,'brass']]},
+  dining_chair_02:{main:'blackLeather', rules:[[/leg|wood/i,'darkWood']]},
+  potted_plant_01:{main:'terra', rules:[[/leaves|leaf|plant/i,'leafGreen']]},
+  potted_plant_02:{main:'terra', rules:[[/leaves|leaf|plant/i,'leafGreen']]},
+  ceramic_vase_01:{main:'ceramic', rules:[]},
+  sofa_02:{main:'redLeather', rules:[]}
+};
+function dressModel(root, id){
+  const prof = PROFILES[id] || {main:'darkWood', rules:[]};
+  root.traverse((n)=>{
+    if(!n.isMesh) return;
+    n.castShadow = true; n.receiveShadow = true;
+    const first = Array.isArray(n.material) ? n.material[0] : n.material;
+    const named = ((n.name || '') + ' ' + ((first && first.name) || ''));
+    let key = prof.main;
+    for(const r of prof.rules){ if(r[0].test(named)){ key = r[1]; break; } }
+    const fresh = MATLIB[key]();
+    if(Array.isArray(n.material)) n.material = n.material.map(()=>fresh);
+    else n.material = fresh;
+  });
 }
 async function placeModel(url, roomId, x, z, width, ry, topY){
   try{
@@ -2333,18 +2430,12 @@ async function placeModel(url, roomId, x, z, width, ry, topY){
     let box = new THREE.Box3().setFromObject(obj);
     const size = box.getSize(new THREE.Vector3());
     if(!size.x) return;
-    obj.scale.setScalar(width / size.x);
+    obj.scale.setScalar(width / Math.max(size.x, size.z)); /* v6: footprint, not size.x only */
     obj.updateMatrixWorld(true);
     box = new THREE.Box3().setFromObject(obj);
     const c = box.getCenter(new THREE.Vector3());
     obj.position.set(-c.x, topY !== undefined ? (topY - box.max.y) : -box.min.y, -c.z);
-    obj.traverse((n)=>{
-      if(n.isMesh){
-        n.castShadow = true; n.receiveShadow = true;
-        const ms = Array.isArray(n.material) ? n.material : [n.material];
-        ms.forEach((m)=>{ if(m && 'envMapIntensity' in m) m.envMapIntensity = 0.85; });
-      }
-    });
+    dressModel(obj, url.split('/').slice(-2, -1)[0]);
     const grp = new THREE.Group();
     grp.position.set(x, 0, z);
     grp.rotation.y = ry || 0;
@@ -2357,32 +2448,51 @@ async function placeModel(url, roomId, x, z, width, ry, topY){
 async function buildModels(){
   const jobs = [
     /* living room: real sofa / coffee table / armchairs / ceiling lamp */
-    placeModel(PHM + 'sofa_03/sofa_03_1k.gltf', 'living', 0, 7.6, 3.3, Math.PI),
-    placeModel(PHM + 'modern_coffee_table_01/modern_coffee_table_01_1k.gltf', 'living', 0, 5.75, 1.8, 0),
-    placeModel(PHM + 'modern_arm_chair_01/modern_arm_chair_01_1k.gltf', 'living', -3.6, 6.3, 1.05, Math.PI - 0.55),
-    placeModel(PHM + 'modern_arm_chair_01/modern_arm_chair_01_1k.gltf', 'living',  3.6, 6.3, 1.05, Math.PI + 0.55),
-    placeModel(PHM + 'modern_ceiling_lamp_01/modern_ceiling_lamp_01_1k.gltf', 'living', 0, 5.6, 1.7, 0, 5.0),
+    placeModel(PHM + 'sofa_03/sofa_03_1k.gltf', 'living', 0, 7.6, 2.3, Math.PI),
+    placeModel(PHM + 'modern_coffee_table_01/modern_coffee_table_01_1k.gltf', 'living', 0, 5.75, 1.25, 0),
+    placeModel(PHM + 'modern_arm_chair_01/modern_arm_chair_01_1k.gltf', 'living', -3.6, 6.3, 0.85, Math.PI - 0.55),
+    placeModel(PHM + 'modern_arm_chair_01/modern_arm_chair_01_1k.gltf', 'living',  3.6, 6.3, 0.85, Math.PI + 0.55),
+    placeModel(PHM + 'modern_ceiling_lamp_01/modern_ceiling_lamp_01_1k.gltf', 'living', 0, 5.6, 0.42, 0, 5.0),
     /* dining: six real chairs around the dropping table */
-    placeModel(PHM + 'dining_chair_02/dining_chair_02_1k.gltf', 'dining', 10.4, 3.4, 0.62, 0),
-    placeModel(PHM + 'dining_chair_02/dining_chair_02_1k.gltf', 'dining', 12.0, 3.4, 0.62, 0),
-    placeModel(PHM + 'dining_chair_02/dining_chair_02_1k.gltf', 'dining', 13.6, 3.4, 0.62, 0),
-    placeModel(PHM + 'dining_chair_02/dining_chair_02_1k.gltf', 'dining', 10.4, 6.6, 0.62, Math.PI),
-    placeModel(PHM + 'dining_chair_02/dining_chair_02_1k.gltf', 'dining', 12.0, 6.6, 0.62, Math.PI),
-    placeModel(PHM + 'dining_chair_02/dining_chair_02_1k.gltf', 'dining', 13.6, 6.6, 0.62, Math.PI),
+    placeModel(PHM + 'dining_chair_02/dining_chair_02_1k.gltf', 'dining', 10.4, 3.4, 0.5, 0),
+    placeModel(PHM + 'dining_chair_02/dining_chair_02_1k.gltf', 'dining', 12.0, 3.4, 0.5, 0),
+    placeModel(PHM + 'dining_chair_02/dining_chair_02_1k.gltf', 'dining', 13.6, 3.4, 0.5, 0),
+    placeModel(PHM + 'dining_chair_02/dining_chair_02_1k.gltf', 'dining', 10.4, 6.6, 0.5, Math.PI),
+    placeModel(PHM + 'dining_chair_02/dining_chair_02_1k.gltf', 'dining', 12.0, 6.6, 0.5, Math.PI),
+    placeModel(PHM + 'dining_chair_02/dining_chair_02_1k.gltf', 'dining', 13.6, 6.6, 0.5, Math.PI),
     /* organic touches: real potted plants — foyer planters + grotto */
-    placeModel(PHM + 'potted_plant_01/potted_plant_01_1k.gltf', 'foyer', -4.6, 11, 1.05, 0.4),
-    placeModel(PHM + 'potted_plant_01/potted_plant_01_1k.gltf', 'foyer',  4.6, 11, 1.05, 2.2),
-    placeModel(PHM + 'potted_plant_01/potted_plant_01_1k.gltf', 'pool', 8.3, -8.6, 0.95, 1.1),
-    placeModel(PHM + 'potted_plant_01/potted_plant_01_1k.gltf', 'pool', 15.7, -8.6, 0.95, 2.8),
+    placeModel(PHM + 'potted_plant_01/potted_plant_01_1k.gltf', 'foyer', -4.6, 11, 0.62, 0.4),
+    placeModel(PHM + 'potted_plant_01/potted_plant_01_1k.gltf', 'foyer',  4.6, 11, 0.62, 2.2),
+    placeModel(PHM + 'potted_plant_01/potted_plant_01_1k.gltf', 'pool', 8.3, -8.6, 0.62, 1.1),
+    placeModel(PHM + 'potted_plant_01/potted_plant_01_1k.gltf', 'pool', 15.7, -8.6, 0.62, 2.8),
     /* v5 additions: leafier plants, foyer vases, side table, cinema sofa */
-    placeModel(PHM + 'potted_plant_02/potted_plant_02_1k.gltf', 'living', -5.2, 1.4, 0.9, 0.7),
-    placeModel(PHM + 'potted_plant_02/potted_plant_02_1k.gltf', 'living', 5.2, 8.8, 0.9, 2.4),
-    placeModel(PHM + 'ceramic_vase_01/ceramic_vase_01_1k.gltf', 'foyer', -2.6, 18.5, 0.55, 0.3),
-    placeModel(PHM + 'ceramic_vase_01/ceramic_vase_01_1k.gltf', 'foyer', 2.6, 18.5, 0.55, 1.9),
+    placeModel(PHM + 'potted_plant_02/potted_plant_02_1k.gltf', 'living', -5.2, 1.4, 0.8, 0.7),
+    placeModel(PHM + 'potted_plant_02/potted_plant_02_1k.gltf', 'living', 5.2, 8.8, 0.8, 2.4),
+    placeModel(PHM + 'ceramic_vase_01/ceramic_vase_01_1k.gltf', 'foyer', -2.6, 18.5, 0.34, 0.3),
+    placeModel(PHM + 'ceramic_vase_01/ceramic_vase_01_1k.gltf', 'foyer', 2.6, 18.5, 0.34, 1.9),
     placeModel(PHM + 'side_table_01/side_table_01_1k.gltf', 'living', 2.7, 7.7, 0.55, 0.4),
-    placeModel(PHM + 'sofa_02/sofa_02_1k.gltf', 'cinema', -12, -5.6, 2.7, Math.PI)
+    placeModel(PHM + 'sofa_02/sofa_02_1k.gltf', 'cinema', -12, -5.6, 2.2, Math.PI)
   ];
   await Promise.allSettled(jobs);
+  /* no-white safety net: once every classic texture has settled (loaded
+     or failed), any mesh still carrying an imageless color map loses it
+     and takes a warm dark tint — a broken texture can never render as
+     flat white again. Runs late on purpose so in-flight loads are safe. */
+  const sweepAt = Date.now();
+  const sweepTimer = setInterval(()=>{
+    if(!window.__texDone && Date.now() - sweepAt < 45000) return;
+    clearInterval(sweepTimer);
+    if(!window.__texDone) return;
+    sceneEl.object3D.traverse((n)=>{
+      if(!n.isMesh) return;
+      const ms = Array.isArray(n.material) ? n.material : [n.material];
+      ms.forEach((m)=>{
+        if(m && m.map && (!m.map.image || !m.map.image.width)){
+          m.map = null; if(m.color) m.color.setHex(0x6a6156); m.needsUpdate = true;
+        }
+      });
+    });
+  }, 3000);
   setMsg('Ready — tap ENTER VR. The pool waterfall is already flowing.');
 }
 
