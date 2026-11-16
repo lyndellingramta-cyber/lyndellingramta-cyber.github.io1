@@ -1,0 +1,1336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Deezy's Mansion — Hybrid Test: Pool Grotto</title>
+<script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+<meta name="mansion-version" content="hybrid-grotto-2026-11-15">
+<style>
+  html,body{margin:0;padding:0;background:#000;font-family:Arial,Helvetica,sans-serif;}
+  #hud{position:fixed;top:10px;left:10px;z-index:10;color:#f5d67b;background:rgba(0,0,0,.72);
+       border:1px solid #c9a227;border-radius:10px;padding:10px 12px;max-width:350px;font-size:13px;line-height:1.45;}
+  #hud h1{font-size:15px;margin:0 0 6px 0;color:#ffd95e;}
+  #hud b{color:#ffe9a8;}
+  #loadmsg{margin-top:6px;color:#9fd0ff;font-size:12px;}
+  #toast{position:fixed;left:50%;bottom:88px;transform:translateX(-50%);z-index:10;color:#111;
+         background:#ffd95e;border-radius:20px;padding:8px 18px;font-size:14px;font-weight:bold;
+         opacity:0;transition:opacity .25s;pointer-events:none;max-width:86vw;text-align:center;}
+  #enterVrBtn{position:fixed;right:14px;bottom:14px;z-index:11;background:#c9a227;color:#000;border:none;
+         border-radius:10px;padding:14px 22px;font-size:16px;font-weight:bold;cursor:pointer;}
+  #soundBtn{position:fixed;left:14px;bottom:14px;z-index:11;background:#222;color:#ffd95e;border:1px solid #c9a227;
+         border-radius:10px;padding:12px 16px;font-size:14px;cursor:pointer;}
+  .a-enter-vr{bottom:70px !important;}
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <h1>DEEZY'S MANSION — HYBRID TEST: POOL GROTTO</h1>
+  <div><b>Modeled grotto, full movement</b> — matched to your pool film: one winding
+  water system, black rock with gold veins, the spiral slide, swim-up bar.</div>
+  <div style="margin-top:4px"><b>Move:</b> left thumbstick &nbsp; <b>Turn:</b> right thumbstick - smooth, no snap</div>
+  <div><b>Interact:</b> point at a glowing gold object + pull <b>trigger</b></div>
+  <div><b>Desktop:</b> W A S D to walk, mouse to look, click objects</div>
+  <div style="margin-top:6px"><b>Try:</b> wade in — the water slows you and you step down into it &bull;
+  gold buttons: waterfalls on/off &bull; bar bell &bull; light mood (gold / purple night) &bull;
+  the animated wall panel by the main pool</div>
+  <div id="loadmsg">Loading real textures…</div>
+</div>
+<div id="toast"></div>
+<button id="soundBtn">&#128266; Sound: tap to enable</button>
+<button id="enterVrBtn">ENTER VR</button>
+
+<a-scene id="scene" renderer="antialias:true; colorManagement:true" vr-mode-ui="enabled:true" webxr="referenceSpaceType: local-floor; optionalFeatures: local-floor, hand-tracking"
+         background="color:#030304">
+  <a-entity id="rig" position="-0.5 0 6.9">
+    <a-entity id="cam" camera look-controls="pointerLockEnabled:true" position="0 1.6 0">
+      <a-entity id="reticle" position="0 0 -1.2"
+                geometry="primitive:ring; radiusInner:0.008; radiusOuter:0.014"
+                material="color:#ffd95e; shader:flat; transparent:true; opacity:0.9"
+                visible="false"></a-entity>
+    </a-entity>
+    <a-entity id="handL" laser-controls="hand:left"
+              raycaster="objects:.interactable; far:40; showLine:true"
+              line="color:#ffd95e; opacity:0.55"></a-entity>
+    <a-entity id="handR" laser-controls="hand:right"
+              raycaster="objects:.interactable; far:40; showLine:true"
+              line="color:#ffd95e; opacity:0.55"></a-entity>
+  </a-entity>
+  <a-entity cursor="rayOrigin:mouse; fuse:false" raycaster="objects:.interactable; far:60"></a-entity>
+
+  <a-light id="ambLight" type="ambient" color="#7a6238" intensity="0.5"></a-light>
+  <a-light id="hemiLight" type="hemisphere" color="#ffe9a8" groundColor="#0a0805" intensity="0.35"></a-light>
+  <a-light id="dirLight" type="directional" color="#ffe2b0" intensity="0.55" position="6 12 4" castShadow="true"
+           shadow-camera-left="-13" shadow-camera-right="13" shadow-camera-top="13" shadow-camera-bottom="-13"
+           shadow-camera-far="40" shadow-mapSize="2048 2048" shadow-bias="-0.0004"></a-light>
+
+  <a-entity id="world"></a-entity>
+</a-scene>
+
+<script>
+'use strict';
+/* ============================================================
+   DEEZY'S MANSION — HYBRID TEST: POOL GROTTO (2026-11-15)
+   Test subject per Deezy: the pool grotto from his film.
+   Modeled room + FULL movement (proven /3d/ rig) + hybrid
+   layers (photographic PBR, HDRI light, animated water) +
+   physics approximations: acceleration-ramped locomotion with
+   collision/sliding, downhill water flow along the connected
+   channel path, gravity droplets, drifting foam, wading drag
+   + step-down, eased moving parts. One connected system:
+   waterfall pool -> rock arch fall -> lazy channel -> swim-up
+   bar -> spiral slide entry -> main pool with its own fall.
+   Signature material: black rock/marble with GOLD VEINING.
+   ============================================================ */
+var GOLD=0xc9a227, GOLD_L=0xffd95e;
+var world=document.getElementById('world');
+var colliders=[];
+var interactables=[];
+var animProps={};
+var waters={falls:{on:true,level:1,target:1}};
+
+function el(tag,parent,attrs){
+  var e=document.createElement(tag);
+  for(var k in attrs) e.setAttribute(k,attrs[k]);
+  (parent||world).appendChild(e); return e;
+}
+function box(parent,x,y,z,w,h,d,color,opts){
+  opts=opts||{};
+  return el('a-box',parent,{position:x+' '+y+' '+z,width:w,height:h,depth:d,
+    material:'color:#'+color.toString(16).padStart(6,'0')+'; roughness:'+(opts.rough!==undefined?opts.rough:0.65)+
+             '; metalness:'+(opts.metal!==undefined?opts.metal:0.25)+
+             (opts.opacity!==undefined?'; transparent:true; opacity:'+opts.opacity:'')+
+             (opts.emissive?'; emissive:#'+opts.emissive.toString(16).padStart(6,'0')+'; emissiveIntensity:'+(opts.ei||0.6):'')});
+}
+function plane(parent,x,y,z,w,h,color,opts){
+  opts=opts||{};
+  return el('a-plane',parent,{position:x+' '+y+' '+z,width:w,height:h,
+    rotation:(opts.rx||0)+' '+(opts.ry||0)+' '+(opts.rz||0),
+    material:'color:#'+color.toString(16).padStart(6,'0')+'; roughness:'+(opts.rough!==undefined?opts.rough:0.7)+
+             '; metalness:'+(opts.metal!==undefined?opts.metal:0.15)+'; side:double'+
+             (opts.opacity!==undefined?'; transparent:true; opacity:'+opts.opacity:'')+
+             (opts.emissive?'; emissive:#'+opts.emissive.toString(16).padStart(6,'0')+'; emissiveIntensity:'+(opts.ei||0.5):'')});
+}
+function label(parent,x,y,z,text,scale,color,ry){
+  return el('a-text',parent,{position:x+' '+y+' '+z,value:text,align:'center',
+    color:color||'#ffd95e',width:scale||7,rotation:'0 '+(ry||0)+' 0','font':'roboto'});
+}
+function promptSign(parent,x,y,z,text,ry){ label(parent,x,y,z,text,2.6,'#ffd95e',ry||0); }
+function addCollider(x,z,w,d,id){
+  var c={minX:x-w/2,maxX:x+w/2,minZ:z-d/2,maxZ:z+d/2,id:id||null};
+  colliders.push(c); return c;
+}
+function applyPBR(entity,mat){
+  entity.addEventListener('loaded',function(){
+    var m=entity.getObject3D&&entity.getObject3D('mesh'); if(!m) return;
+    m.material=mat; m.castShadow=true; m.receiveShadow=true;
+  });
+}
+function mesh(geo,mat,x,y,z,rx,ry,rz,parentObj){
+  var m=new THREE.Mesh(geo,mat);
+  m.position.set(x||0,y||0,z||0);
+  if(rx||ry||rz) m.rotation.set(rx||0,ry||0,rz||0);
+  m.castShadow=true; m.receiveShadow=true;
+  (parentObj||world.object3D).add(m);
+  return m;
+}
+function gbox(parentObj,x,y,z,w,h,d,mat,ry){
+  return mesh(new THREE.BoxGeometry(w,h,d),mat||goldSmoothMat,x,y,z,0,ry||0,0,parentObj);
+}
+function makeInteractable(entity,action,prompt){
+  entity.classList.add('interactable');
+  entity.setAttribute('data-action',action);
+  entity.setAttribute('data-prompt',prompt);
+  interactables.push(entity);
+  return entity;
+}
+function goldButton(parent,x,y,z,action,prompt,r){
+  var b=el('a-sphere',parent,{position:x+' '+y+' '+z,radius:r||0.1,
+    material:'color:#ffd95e; emissive:#c9a227; emissiveIntensity:0.9; metalness:0.9; roughness:0.2'});
+  makeInteractable(b,action,prompt);
+  return b;
+}
+</script>
+
+<script>
+/* ================= TEXTURES: PHOTO PBR + SIGNATURE GOLD-VEIN ================= */
+var loadmsgEl=document.getElementById('loadmsg');
+function setLoadMsg(t){ if(loadmsgEl) loadmsgEl.textContent=t; }
+window.__setLoadMsg=setLoadMsg;
+var texMgr=new THREE.LoadingManager();
+texMgr.onProgress=function(u,loaded,total){ setLoadMsg('Loading real textures… '+loaded+' / '+total); };
+texMgr.onLoad=function(){ window.__texDone=true; setLoadMsg('Textures ready — loading HDRI light…'); };
+texMgr.onError=function(u){ setLoadMsg('A texture failed ('+u.split('/').pop()+') — grotto still works.'); };
+var texLoader=new THREE.TextureLoader(texMgr);
+var MAXANISO=16; try{ MAXANISO=Math.min(16, document.querySelector('a-scene').renderer.capabilities.getMaxAnisotropy()); }catch(e){}
+function loadTex(url,srgb,rx,ry){
+  var t=texLoader.load(url);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping;
+  if(rx||ry) t.repeat.set(rx||1,ry||1);
+  if(srgb) t.colorSpace=THREE.SRGBColorSpace;
+  t.anisotropy=MAXANISO;
+  return t;
+}
+var PH='https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/';
+var PH2K='https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/';
+var ACG='https://f003.backblazeb2.com/file/ambientCG-Web/media/surface-preview/Marble006/';
+function marbleMatFor(rx,ry){
+  var m=new THREE.MeshStandardMaterial({color:0xffffff,roughness:1.0,metalness:0.05,envMapIntensity:1.0});
+  m.map=loadTex(ACG+'Marble006_SQ_Color.jpg',true,rx,ry);
+  m.roughnessMap=loadTex(ACG+'Marble006_SQ_Roughness.jpg',false,rx,ry);
+  m.normalMap=loadTex(ACG+'Marble006_SQ_NormalDX.jpg',false,rx,ry);
+  m.normalScale=new THREE.Vector2(1,-1);
+  return m;
+}
+function rockMatFor(rx,ry,tint){
+  var m=new THREE.MeshStandardMaterial({color:tint||0x777777,roughness:1.0,metalness:0.0,envMapIntensity:0.5});
+  m.map=loadTex(PH2K+'dark_rock/dark_rock_diff_2k.jpg',true,rx,ry);
+  m.normalMap=loadTex(PH+'dark_rock/dark_rock_nor_gl_1k.jpg',false,rx,ry);
+  m.roughnessMap=loadTex(PH+'dark_rock/dark_rock_rough_1k.jpg',false,rx,ry);
+  return m;
+}
+/* SIGNATURE: black marble with GOLD VEINS — canvas-generated
+   (random-walk branching veins in gold leaf tones on near-black),
+   used on the slide, bar counter, benches and trim. */
+var goldVeinCvs=(function(){
+  var S=512, c=document.createElement('canvas'); c.width=c.height=S;
+  var g=c.getContext('2d');
+  g.fillStyle='#0b0b0e'; g.fillRect(0,0,S,S);
+  for(var b=0;b<26;b++){
+    var gx=Math.random()*S, gy=Math.random()*S, gr=g.createRadialGradient(gx,gy,4,gx,gy,60+Math.random()*90);
+    gr.addColorStop(0,'rgba(38,34,30,0.5)'); gr.addColorStop(1,'rgba(0,0,0,0)');
+    g.fillStyle=gr; g.fillRect(0,0,S,S);
+  }
+  function vein(x,y,ang,len,wdt){
+    g.strokeStyle='rgba(216,178,74,'+(0.55+Math.random()*0.4)+')';
+    g.lineWidth=wdt; g.lineCap='round';
+    g.beginPath(); g.moveTo(x,y);
+    var steps=Math.floor(len/14);
+    for(var s=0;s<steps;s++){
+      ang+=(Math.random()-0.5)*0.7;
+      x+=Math.cos(ang)*14; y+=Math.sin(ang)*14;
+      g.lineTo(x,y);
+      if(Math.random()<0.16&&wdt>0.7) vein(x,y,ang+(Math.random()<0.5?0.8:-0.8),len*0.45,wdt*0.55);
+    }
+    g.stroke();
+    g.strokeStyle='rgba(255,230,150,0.5)'; g.lineWidth=Math.max(0.4,wdt*0.35);
+    g.beginPath(); g.moveTo(x,y); g.stroke();
+  }
+  for(var v=0;v<15;v++) vein(Math.random()*S,Math.random()*S,Math.random()*6.28,120+Math.random()*220,1+Math.random()*1.8);
+  for(var v2=0;v2<26;v2++) vein(Math.random()*S,Math.random()*S,Math.random()*6.28,50+Math.random()*90,0.5);
+  return c;
+})();
+function goldVeinMat(rx,ry,gloss){
+  var t=new THREE.CanvasTexture(goldVeinCvs);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(rx||1,ry||1);
+  t.colorSpace=THREE.SRGBColorSpace; t.anisotropy=MAXANISO;
+  var m=new THREE.MeshStandardMaterial({map:t,color:0xffffff,roughness:gloss!==undefined?gloss:0.3,metalness:0.35,envMapIntensity:1.25,bumpMap:t,bumpScale:0.015});
+  return m;
+}
+/* hero rock: dark rock PBR + the gold-vein canvas as a warm
+   emissive map, so the cracks glow like the film's lit crevices */
+function rockGoldMat(rx,ry){
+  var m=rockMatFor(rx,ry,0x5a5a5a);
+  var et=new THREE.CanvasTexture(goldVeinCvs);
+  et.wrapS=et.wrapT=THREE.RepeatWrapping; et.repeat.set(rx||1,ry||1);
+  m.emissiveMap=et; m.emissive=new THREE.Color(0xff9a2a); m.emissiveIntensity=0.32;
+  return m;
+}
+var goldSmoothMat=new THREE.MeshStandardMaterial({color:0xd9ab4a,roughness:0.27,metalness:1.0,envMapIntensity:1.35});
+function goldMetalMat(){
+  var m=new THREE.MeshStandardMaterial({color:0xd9ab4a,roughness:1.0,metalness:1.0,envMapIntensity:1.3});
+  m.map=loadTex(PH+'metal_plate/metal_plate_diff_1k.jpg',true,1,1);
+  m.normalMap=loadTex(PH+'metal_plate/metal_plate_nor_gl_1k.jpg',false,1,1);
+  m.normalScale=new THREE.Vector2(0.35,0.35);
+  m.roughnessMap=loadTex(PH+'metal_plate/metal_plate_rough_1k.jpg',false,1,1);
+  return m;
+}
+var goldMat=goldMetalMat();
+/* gold LED strip: emissive line that traces the water edges */
+var ledMat=new THREE.MeshBasicMaterial({color:0xffc44d});
+var ledPurpleMat=new THREE.MeshBasicMaterial({color:0xb46bff});
+/* generated water maps (from the /3d/ build) */
+var waterNormalCvs=(function(){
+  var S=256, cvs=document.createElement('canvas'); cvs.width=cvs.height=S;
+  var waves=[[3,2,0.5,0.0],[-2,5,0.35,1.7],[6,-3,0.22,3.1],[1,-6,0.18,5.0],[-7,-4,0.12,2.2],[4,7,0.09,4.0]];
+  var H=new Float32Array(S*S);
+  for(var y=0;y<S;y++) for(var x=0;x<S;x++){
+    var h=0;
+    for(var w=0;w<waves.length;w++){ var wv=waves[w]; h+=wv[2]*Math.sin(6.28318*(wv[0]*x/S+wv[1]*y/S)+wv[3]); }
+    H[y*S+x]=h;
+  }
+  var ctx=cvs.getContext('2d'), img=ctx.createImageData(S,S), d=img.data, str=1.6;
+  for(var y2=0;y2<S;y2++) for(var x2=0;x2<S;x2++){
+    var xm=(x2-1+S)%S, xp=(x2+1)%S, ym=(y2-1+S)%S, yp=(y2+1)%S;
+    var dx=(H[y2*S+xp]-H[y2*S+xm])*str, dy=(H[yp*S+x2]-H[ym*S+x2])*str;
+    var inv=1/Math.sqrt(dx*dx+dy*dy+1);
+    var i=(y2*S+x2)*4;
+    d[i]=(-dx*inv*0.5+0.5)*255; d[i+1]=(-dy*inv*0.5+0.5)*255; d[i+2]=(inv*0.5+0.5)*255; d[i+3]=255;
+  }
+  ctx.putImageData(img,0,0); return cvs;
+})();
+function waterTex(rx,ry){
+  var t=new THREE.CanvasTexture(waterNormalCvs);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(rx||1,ry||1);
+  return t;
+}
+var fallStreakCvs=(function(){
+  var c=document.createElement('canvas'); c.width=256; c.height=256;
+  var g=c.getContext('2d'); g.clearRect(0,0,256,256);
+  for(var i=0;i<44;i++){
+    var x=Math.random()*256, w=2+Math.random()*4.5, a=0.2+Math.random()*0.5;
+    var grad=g.createLinearGradient(0,0,0,256);
+    grad.addColorStop(0,'rgba(255,255,255,'+a+')');
+    grad.addColorStop(0.5,'rgba(255,255,255,'+(a*0.75)+')');
+    grad.addColorStop(1,'rgba(255,255,255,'+a+')');
+    g.fillStyle=grad; g.fillRect(x,0,w,256);
+  }
+  var sheen=g.createLinearGradient(0,0,256,0);
+  sheen.addColorStop(0,'rgba(255,255,255,0)'); sheen.addColorStop(0.5,'rgba(255,255,255,0.10)'); sheen.addColorStop(1,'rgba(255,255,255,0)');
+  g.fillStyle=sheen; g.fillRect(0,0,256,256);
+  return c;
+})();
+function fallTex(rx,ry){
+  var t=new THREE.CanvasTexture(fallStreakCvs);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(rx||1,ry||2);
+  return t;
+}
+var foamCvs=(function(){
+  var c=document.createElement('canvas'); c.width=c.height=256;
+  var g=c.getContext('2d'); g.clearRect(0,0,256,256);
+  for(var i=0;i<130;i++){
+    var a=Math.random()*6.283, r=Math.pow(Math.random(),0.6)*105;
+    var x=128+Math.cos(a)*r, y=128+Math.sin(a)*r*0.82, rad=3+Math.random()*13;
+    var rg=g.createRadialGradient(x,y,0,x,y,rad);
+    rg.addColorStop(0,'rgba(255,255,255,'+(0.35+Math.random()*0.4)+')');
+    rg.addColorStop(1,'rgba(255,255,255,0)');
+    g.fillStyle=rg; g.beginPath(); g.arc(x,y,rad,0,6.29); g.fill();
+  }
+  return c;
+})();
+var causticsCvs=(function(){
+  var S=128, c=document.createElement('canvas'); c.width=c.height=S;
+  var g=c.getContext('2d'), img=g.createImageData(S,S), d=img.data;
+  var pts=[]; for(var i=0;i<22;i++) pts.push([Math.random()*S,Math.random()*S]);
+  for(var y=0;y<S;y++) for(var x=0;x<S;x++){
+    var f1=1e9, f2=1e9;
+    for(var p=0;p<pts.length;p++){
+      for(var ox=-1;ox<=1;ox++) for(var oy=-1;oy<=1;oy++){
+        var dx=x-(pts[p][0]+ox*S), dy=y-(pts[p][1]+oy*S);
+        var dd=dx*dx+dy*dy;
+        if(dd<f1){ f2=f1; f1=dd; } else if(dd<f2){ f2=dd; }
+      }
+    }
+    var v=Math.sqrt(f2)-Math.sqrt(f1);
+    var b=Math.pow(Math.max(0,1-v/7),5)*255;
+    var idx=(y*S+x)*4; d[idx]=b*0.75; d[idx+1]=b*0.9; d[idx+2]=b; d[idx+3]=255;
+  }
+  g.putImageData(img,0,0); return c;
+})();
+function causticsTex(rx,ry){
+  var t=new THREE.CanvasTexture(causticsCvs);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(rx||3,ry||2);
+  return t;
+}
+/* palm fronds (v6 fix from /3d/: canvas leaflets, alpha-tested,
+   bent planes — never flat ovals again) */
+var frondCvs=(function(){
+  var c=document.createElement('canvas'); c.width=256; c.height=128;
+  var g=c.getContext('2d'); g.clearRect(0,0,256,128);
+  g.lineCap='round';
+  for(var s=0;s<26;s++){
+    var t=s/25, x=8+t*240, len=44*(1-t*0.55)+8, wdt=3.4*(1-t*0.5);
+    var gr=g.createLinearGradient(x,64,x,64+len);
+    gr.addColorStop(0,'#4c8a34'); gr.addColorStop(1,'#7cb554');
+    g.strokeStyle=gr; g.lineWidth=wdt;
+    g.beginPath(); g.moveTo(x,64); g.quadraticCurveTo(x+4,64+len*0.6,x+9,64+len); g.stroke();
+    g.beginPath(); g.moveTo(x,64); g.quadraticCurveTo(x+4,64-len*0.6,x+9,64-len); g.stroke();
+  }
+  g.strokeStyle='#3a6b27'; g.lineWidth=4;
+  g.beginPath(); g.moveTo(2,64); g.lineTo(254,64); g.stroke();
+  return c;
+})();
+var frondTex=new THREE.CanvasTexture(frondCvs); frondTex.colorSpace=THREE.SRGBColorSpace; frondTex.anisotropy=4;
+var leafMat2=new THREE.MeshStandardMaterial({map:frondTex,transparent:true,alphaTest:0.4,side:THREE.DoubleSide,roughness:0.9,metalness:0});
+var frondGeo=new THREE.PlaneGeometry(1.6,0.55,6,1);
+frondGeo.translate(0.8,0,0);
+(function(){ var pos=frondGeo.attributes.position;
+  for(var vi=0;vi<pos.count;vi++){ var vx=pos.getX(vi); var tt=vx/1.6; pos.setY(vi,pos.getY(vi)-0.5*tt*tt); }
+  frondGeo.computeVertexNormals(); })();
+var shadowTex=(function(){
+  var c=document.createElement('canvas'); c.width=c.height=256;
+  var g=c.getContext('2d');
+  var rg=g.createRadialGradient(128,128,10,128,128,128);
+  rg.addColorStop(0,'rgba(0,0,0,0.55)'); rg.addColorStop(1,'rgba(0,0,0,0)');
+  g.fillStyle=rg; g.fillRect(0,0,256,256);
+  return new THREE.CanvasTexture(c);
+})();
+function contactShadow(x,z,w,d,op){
+  var m=new THREE.Mesh(new THREE.PlaneGeometry(w,d),
+    new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,opacity:op||0.85,depthWrite:false}));
+  m.rotation.x=-Math.PI/2; m.position.set(x,0.06,z); m.renderOrder=1;
+  world.object3D.add(m); return m;
+}
+var poolTex=(function(){
+  var c=document.createElement('canvas'); c.width=c.height=256;
+  var g=c.getContext('2d');
+  var rg=g.createRadialGradient(128,128,6,128,128,126);
+  rg.addColorStop(0,'rgba(255,206,110,0.5)'); rg.addColorStop(0.55,'rgba(255,180,80,0.18)');
+  rg.addColorStop(1,'rgba(255,170,60,0)');
+  g.fillStyle=rg; g.fillRect(0,0,256,256);
+  return new THREE.CanvasTexture(c);
+})();
+</script>
+
+<script>
+/* ================= THE CONNECTED WATER SYSTEM =================
+   Flow runs DOWNHILL along one path: waterfall pool -> arch ->
+   channel A/B/C -> past the bar -> slide entry -> main pool.
+   Every scroll direction, foam drift and droplet follows it.  */
+var PO=world.object3D;
+var animWaters=[];   // {t, vx, vy, feed:'falls'|'always'}
+var FLOW_PATH=[
+  [-5.6,-5.75,1.2,0.9],[-5.6,-4.7,1.5,0.3],[-3.6,-5.15,0.8,0.8],
+  [-1.0,-5.1,0.8,0.9],[1.8,-5.0,0.8,0.9],[2.7,-3.0,0.8,0.95],
+  [3.4,-1.2,0.8,0.9],[3.4,1.0,0.8,0.9],[3.4,2.7,0.8,0.85],
+  [2.2,3.15,0.9,0.7],[0.9,3.45,1.4,0.45],[-1.2,3.55,2.2,0.3],
+  [-3.2,3.6,2.6,0.25],[-4.9,3.55,2.2,0.3]
+];
+var PATH_SEG=[], PATH_TOTAL=0;
+for(var pi=0;pi<FLOW_PATH.length-1;pi++){
+  var pa=FLOW_PATH[pi], pb=FLOW_PATH[pi+1];
+  var pl=Math.hypot(pb[0]-pa[0],pb[1]-pa[1]);
+  PATH_SEG.push({a:pa,b:pb,len:pl,cum:PATH_TOTAL});
+  PATH_TOTAL+=pl;
+}
+function samplePath(s){
+  s=Math.max(0,Math.min(PATH_TOTAL-0.001,s));
+  for(var i=0;i<PATH_SEG.length;i++){
+    var sg=PATH_SEG[i];
+    if(s<=sg.cum+sg.len||i===PATH_SEG.length-1){
+      var u=sg.len?((s-sg.cum)/sg.len):0;
+      var x=sg.a[0]+(sg.b[0]-sg.a[0])*u, z=sg.a[1]+(sg.b[1]-sg.a[1])*u;
+      var dx=(sg.b[0]-sg.a[0])/(sg.len||1), dz=(sg.b[1]-sg.a[1])/(sg.len||1);
+      return {x:x,z:z,px:-dz,pz:dx,w:sg.a[2]+(sg.b[2]-sg.a[2])*u,spd:sg.a[3]+(sg.b[3]-sg.a[3])*u};
+    }
+  }
+}
+function waterSurfaceMat(rx,ry,vx,vy,feed){
+  var t1=waterTex(rx,ry), t2=waterTex(rx*0.7,ry*0.7);
+  animWaters.push({t:t1,vx:vx,vy:vy,feed:feed},{t:t2,vx:-vx*0.7,vy:-vy*0.7,feed:feed});
+  var m1=new THREE.MeshStandardMaterial({color:0x0d6a84,transparent:true,opacity:0.88,roughness:0.06,metalness:0,
+    normalMap:t1,normalScale:new THREE.Vector2(0.65,0.65),envMapIntensity:1.5,emissive:0x0a4a5e,emissiveIntensity:0.4});
+  var m2=new THREE.MeshStandardMaterial({color:0x9fe8ff,transparent:true,opacity:0.26,roughness:0.05,metalness:0,
+    normalMap:t2,normalScale:new THREE.Vector2(0.5,0.5),envMapIntensity:1.6});
+  return [m1,m2];
+}
+function causticsPair(parentObj,x,z,w,d,rx,ry,y){
+  var ca1=causticsTex(rx,ry), ca2=causticsTex(rx*0.7,ry*0.7);
+  animWaters.push({t:ca1,vx:0.013,vy:0.009,feed:'always'},{t:ca2,vx:-0.008,vy:0.011,feed:'always'});
+  var m1=new THREE.Mesh(new THREE.PlaneGeometry(w,d),
+    new THREE.MeshBasicMaterial({map:ca1,transparent:true,opacity:0.32,blending:THREE.AdditiveBlending,depthWrite:false}),
+    x,y||-0.94,z,-Math.PI/2,0,0,parentObj);
+  var m2=new THREE.Mesh(new THREE.PlaneGeometry(w,d),
+    new THREE.MeshBasicMaterial({map:ca2,transparent:true,opacity:0.2,blending:THREE.AdditiveBlending,depthWrite:false}),
+    x,(y||-0.94)+0.03,z,-Math.PI/2,0,0.6,parentObj);
+  m1.castShadow=m2.castShadow=false; m1.renderOrder=1; m2.renderOrder=1;
+}
+/* one channel segment: banks + gold LED edges + flowing ribbon */
+function buildSegment(S,E){
+  var dx=E[0]-S[0], dz=E[1]-S[1], L=Math.hypot(dx,dz), th=Math.atan2(dz,dx);
+  var g=new THREE.Group();
+  g.position.set((S[0]+E[0])/2,-0.0,(S[1]+E[1])/2);
+  g.rotation.y=-th;
+  PO.add(g);
+  var basin=new THREE.Mesh(new THREE.BoxGeometry(L+0.6,0.1,2.5),rockMatFor(2,1,0x3a3a3a),);
+  basin.position.set(0,-1.05,0); basin.receiveShadow=true; g.add(basin);
+  [-1.12,1.12].forEach(function(bz){
+    var bank=new THREE.Mesh(new THREE.BoxGeometry(L+0.6,0.62,0.55),goldVeinMat(3,1),);
+    bank.position.set(0,-0.28,bz); bank.castShadow=true; bank.receiveShadow=true; g.add(bank);
+    var led=new THREE.Mesh(new THREE.BoxGeometry(L+0.6,0.035,0.05),ledMat);
+    led.position.set(0,0.045,bz>0?0.86:-0.86); g.add(led);
+  });
+  var mats=waterSurfaceMat(Math.max(1,Math.round(L/2)),1,0.055,0,'falls');
+  var w1=new THREE.Mesh(new THREE.PlaneGeometry(L+0.5,1.7),mats[0]);
+  w1.rotation.x=-Math.PI/2; w1.position.y=-0.32; w1.receiveShadow=true; g.add(w1);
+  var w2=new THREE.Mesh(new THREE.PlaneGeometry(L+0.5,1.7),mats[1]);
+  w2.rotation.x=-Math.PI/2; w2.position.y=-0.29; g.add(w2);
+  causticsPair(g,0,0,L+0.4,2.2,3,2,-1.0);
+  return g;
+}
+function buildPool(cx,cz,w,d,label){
+  var g=new THREE.Group(); g.position.set(cx,0,cz); PO.add(g);
+  var floor=new THREE.Mesh(new THREE.BoxGeometry(w,0.1,d),rockMatFor(3,2,0x3a3a3a));
+  floor.position.y=-1.05; floor.receiveShadow=true; g.add(floor);
+  /* inner basin walls: gold-vein black marble */
+  [[0,-d/2+0.12,w,0.24],[0,d/2-0.12,w,0.24],[-w/2+0.12,0,0.24,d],[w/2-0.12,0,0.24,d]].forEach(function(wp){
+    var wall=new THREE.Mesh(new THREE.BoxGeometry(wp[2],1.0,wp[3]),goldVeinMat(3,1));
+    wall.position.set(wp[0],-0.52,wp[1]); wall.receiveShadow=true; g.add(wall);
+  });
+  /* deck rim + LED line tracing the edge (the film's signature) */
+  [[0,-d/2-0.18,w+0.7,0.36],[0,d/2+0.18,w+0.7,0.36],[-w/2-0.18,0,0.36,d+0.7],[w/2+0.18,0,0.36,d+0.7]].forEach(function(rp){
+    var rim=new THREE.Mesh(new THREE.BoxGeometry(rp[2],0.1,rp[3]),goldVeinMat(3,1));
+    rim.position.set(rp[0],0.0,rp[1]); rim.receiveShadow=true; g.add(rim);
+    var led=new THREE.Mesh(new THREE.BoxGeometry(rp[2]===0.36?0.05:rp[2],0.03,rp[3]===0.36?0.05:rp[3]),ledMat);
+    led.position.set(rp[0],0.06,rp[1]); g.add(led);
+  });
+  var mats=waterSurfaceMat(Math.round(w/2),Math.round(d/2),0.012,0.008,'always');
+  var w1=new THREE.Mesh(new THREE.PlaneGeometry(w-0.2,d-0.2),mats[0]);
+  w1.rotation.x=-Math.PI/2; w1.position.y=-0.32; w1.receiveShadow=true; g.add(w1);
+  var w2=new THREE.Mesh(new THREE.PlaneGeometry(w-0.2,d-0.2),mats[1]);
+  w2.rotation.x=-Math.PI/2; w2.position.y=-0.29; g.add(w2);
+  causticsPair(g,0,0,w-0.3,d-0.3,3,2,-0.97);
+  if(label) label(world,cx,2.2,cz-Math.max(w,d)/2-0.6,label,4.5,'#ffd95e',0);
+  return g;
+}
+/* joint discs hide the seams where segments meet */
+function jointDisc(x,z,r){
+  var mats=waterSurfaceMat(1,1,0.02,0.012,'falls');
+  var m=new THREE.Mesh(new THREE.CircleGeometry(r||1.05,20),mats[0]);
+  m.rotation.x=-Math.PI/2; m.position.set(x,-0.315,z); PO.add(m);
+}
+/* ================= WATERFALLS ================= */
+animProps.fallFx=[];
+function makeFall(x,yTop,z,ry,width,drop,baseY){
+  var g=new THREE.Group(); g.position.set(x,yTop,z); g.rotation.y=ry; PO.add(g);
+  var fx={sheets:[],level:1};
+  function sheet(zOff,op,nRep,phase){
+    var nT=waterTex(1,nRep), aT=fallTex(1,1);
+    animWaters.push({t:nT,vx:0,vy:-(1.35+phase*0.4),feed:'sheet'},{t:aT,vx:0,vy:-(0.85+phase*0.3),feed:'sheet'});
+    var m=new THREE.Mesh(new THREE.PlaneGeometry(width,drop),
+      new THREE.MeshStandardMaterial({color:0xbfe6ff,transparent:true,opacity:op,roughness:0.05,metalness:0,
+        normalMap:nT,normalScale:new THREE.Vector2(0.8,0.8),alphaMap:aT,envMapIntensity:1.4,
+        emissive:0x2e6ea8,emissiveIntensity:0.25,side:THREE.DoubleSide,depthWrite:false}));
+    m.position.set(0,-drop/2,zOff); m.castShadow=false; m.renderOrder=3; g.add(m);
+    fx.sheets.push(m);
+    return m;
+  }
+  sheet(0,0.55,2.5,0); sheet(-0.22,0.4,2.0,1);
+  /* world-space base point (for foam, rings, light) */
+  var fwd=new THREE.Vector3(0,0,1).applyEuler(new THREE.Euler(0,ry,0));
+  var bx=x+fwd.x*0.55, bz=z+fwd.z*0.55;
+  var foamMat=new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(foamCvs),transparent:true,opacity:0.85,depthWrite:false});
+  var foam=new THREE.Mesh(new THREE.CircleGeometry(width*0.52,24),foamMat);
+  foam.rotation.x=-Math.PI/2; foam.position.set(bx,baseY+0.03,bz); foam.renderOrder=2; PO.add(foam);
+  fx.foam=foam; fx.foamMat=foamMat;
+  fx.rings=[];
+  for(var ri=0;ri<2;ri++){
+    var ring=new THREE.Mesh(new THREE.RingGeometry(0.32,0.4,26),
+      new THREE.MeshBasicMaterial({color:0xdff4ff,transparent:true,opacity:0.4,depthWrite:false,side:THREE.DoubleSide}));
+    ring.rotation.x=-Math.PI/2; ring.position.set(bx,baseY+0.05,bz); ring.renderOrder=2; PO.add(ring);
+    fx.rings.push({m:ring,ph:ri*0.5});
+  }
+  /* droplets: spawn at the lip, arc under gravity, reset at base */
+  var DN=36, dPos=new Float32Array(DN*3), dVel=new Float32Array(DN*3);
+  for(var di=0;di<DN;di++){
+    dPos[di*3]=(Math.random()-0.5)*width*0.9;
+    dPos[di*3+1]=-Math.random()*drop;
+    dPos[di*3+2]=0.1+Math.random()*0.3;
+    dVel[di*3]=0; dVel[di*3+1]=-0.6-Math.random(); dVel[di*3+2]=0.55;
+  }
+  var dGeo=new THREE.BufferGeometry();
+  dGeo.setAttribute('position',new THREE.BufferAttribute(dPos,3));
+  var dMat=new THREE.PointsMaterial({map:poolTex,color:0xbfe6ff,size:0.06,transparent:true,opacity:0.75,depthWrite:false});
+  var dPts=new THREE.Points(dGeo,dMat); dPts.frustumCulled=false; g.add(dPts);
+  fx.drops={pos:dPos,vel:dVel,attr:dGeo.getAttribute('position'),drop:drop,width:width,mat:dMat};
+  /* mist sprites drifting up at the base */
+  fx.mists=[];
+  for(var mi=0;mi<3;mi++){
+    var sm=new THREE.SpriteMaterial({map:poolTex,color:0xbfdcff,transparent:true,opacity:0.1,depthWrite:false});
+    var spr=new THREE.Sprite(sm);
+    spr.position.set((Math.random()-0.5)*width*0.7,0.3+mi*0.22,0.3);
+    spr.scale.set(1.6,0.9,1);
+    g.add(spr);
+    fx.mists.push({s:spr,ph:mi*2.1,drop:drop});
+  }
+  var lt=new THREE.PointLight(0x2ee6c8,1.1,7,1.8); lt.position.set(bx,baseY+0.5,bz); PO.add(lt);
+  fx.lightT=lt;
+  animProps.fallFx.push(fx);
+  return fx;
+}
+/* foam that rides the current: spawns at the falls, drifts the
+   whole path with the flow, respawns at the top */
+animProps.foamDrift=(function(){
+  var N=110, pos=new Float32Array(N*3);
+  var geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  var mat=new THREE.PointsMaterial({map:new THREE.CanvasTexture(foamCvs),color:0xffffff,size:0.16,
+    transparent:true,opacity:0.75,depthWrite:false});
+  var pts=new THREE.Points(geo,mat); pts.frustumCulled=false; PO.add(pts);
+  var parts=[];
+  for(var i=0;i<N;i++) parts.push({s:Math.random()*PATH_TOTAL,lat:(Math.random()*2-1),j:Math.random()*6.28});
+  return {pos:pos,attr:geo.getAttribute('position'),parts:parts,mat:mat};
+})();
+</script>
+
+<script>
+/* ================= THE GROTTO ROOM ================= */
+var marbleDeck=marbleMatFor(9,7);
+var rockWallMat=rockMatFor(6,2,0x666666);
+var rockCeilMat=rockMatFor(5,3,0x4a4a4a);
+var veinDeckMat=goldVeinMat(4,3);
+/* deck */
+var deck=mesh(new THREE.BoxGeometry(18.6,0.1,15.6),marbleDeck,0,-0.08,0); deck.castShadow=false;
+/* perimeter walls */
+function wall(x,z,w,h,d,mat,y,ry){ var m=mesh(new THREE.BoxGeometry(w,h,d),mat,x,y||h/2,z,0,ry||0,0); addCollider(x,z,w,d); return m; }
+wall(0,-7.6,18.6,5.6,0.5,rockWallMat);
+wall(0,7.6,18.6,5.6,0.5,rockWallMat);
+wall(-9.1,0,0.5,5.6,15.6,rockWallMat);
+wall(9.1,0,0.5,5.6,15.6,rockWallMat);
+/* ceilings: organic rock over the grotto (north), ornate white
+   with gold rings over the main pool (south) */
+var ceilN=mesh(new THREE.BoxGeometry(18.6,0.3,8.2),rockCeilMat,0,5.0,-3.6); ceilN.castShadow=false;
+var ceilS=mesh(new THREE.BoxGeometry(18.6,0.3,7.6),
+  new THREE.MeshStandardMaterial({color:0xe9e2cf,roughness:0.55,metalness:0.1,envMapIntensity:0.7}),0,5.45,3.7);
+ceilS.castShadow=false;
+function ceilRing(x,z,r,y,mat){
+  var t=mesh(new THREE.TorusGeometry(r,0.07,10,48),mat||goldSmoothMat,x,y||5.28,z,Math.PI/2,0,0);
+  t.castShadow=false; return t;
+}
+ceilRing(-2.6,3.4,2.3); ceilRing(-2.6,3.4,1.5);
+ceilRing(6.6,4.9,1.7);
+ceilRing(-5.6,-5.2,1.3,4.78,ledPurpleMat);
+ceilRing(3.4,-0.4,1.1,4.78,ledPurpleMat);
+/* stalactites under the rock ceiling */
+for(var st=0;st<9;st++){
+  var sx=-8+st*2+Math.sin(st*7)*0.5, sz=-6.4+((st*2.3)%5.5);
+  var rock=mesh(new THREE.DodecahedronGeometry(0.4+((st*37)%10)/22,0),rockCeilMat,sx,4.75,sz,0,st*1.3,0);
+  rock.scale.y=1.7; rock.castShadow=false;
+}
+/* scattered rock clusters (organic masses) */
+function rockCluster(x,z,n,s,mat){
+  var g=new THREE.Group(); g.position.set(x,0,z); PO.add(g);
+  for(var i=0;i<n;i++){
+    var r=mesh(new THREE.DodecahedronGeometry((0.35+((i*53)%10)/16)*s,0),mat||rockWallMat,
+      Math.sin(i*2.4)*0.55*s,0.3*s+((i*29)%10)/14*s,Math.cos(i*1.9)*0.55*s,0,i*1.1,0,g);
+    r.castShadow=true;
+  }
+  return g;
+}
+rockCluster(-8.2,-6.6,4,1.1); rockCluster(8.3,-6.8,4,1.0); rockCluster(-8.4,6.9,3,0.9);
+rockCluster(8.5,6.9,3,0.9); rockCluster(-1.2,-7.0,3,0.8); rockCluster(5.6,-7.0,3,0.8);
+/* ---- the water bodies ---- */
+buildPool(-5.6,-5.2,3.6,2.7);
+buildSegment([-3.4,-5.2],[1.8,-5.0]);
+buildSegment([1.8,-5.0],[3.4,-1.2]);
+buildSegment([3.4,-1.2],[3.4,2.6]);
+buildSegment([3.4,2.6],[1.0,3.4]);
+buildSegment([5.3,5.65],[3.5,3.1]);
+buildPool(-2.6,3.4,7.4,4.2);
+[[-3.4,-5.2],[1.8,-5.0],[3.4,-1.2],[3.4,2.6],[3.5,3.1]].forEach(function(j){ jointDisc(j[0],j[1],1.05); });
+/* ---- rock formations + the three waterfalls ---- */
+var heroRock=rockGoldMat(2,2);
+function fallFormation(x,z,w,h,d){
+  var g=new THREE.Group(); g.position.set(x,0,z); PO.add(g);
+  var main=mesh(new THREE.BoxGeometry(w,h,d),heroRock,0,h/2,0,0,0,0,g);
+  for(var i=0;i<4;i++){
+    mesh(new THREE.DodecahedronGeometry(0.5+((i*41)%10)/14,0),heroRock,
+      (i-1.5)*w/4.4,h-0.3-((i*17)%10)/20,(i%2?0.3:-0.25),0,i*1.7,0,g);
+  }
+  addCollider(x,z,w,d);
+  return g;
+}
+/* fall 1: north wall into the waterfall pool (faces south) */
+fallFormation(-5.6,-6.95,3.4,4.3,0.9);
+makeFall(-5.6,3.55,-6.45,0,2.3,3.85,-0.32);
+/* fall 3: west rock wall into the main pool (faces east) */
+fallFormation(-7.15,3.4,1.1,4.6,3.6);
+makeFall(-6.55,3.85,3.4,Math.PI/2,2.6,4.15,-0.32);
+/* ---- the rock arch with its own fall (pool -> channel) ---- */
+(function(){
+  var g=new THREE.Group(); g.position.set(-3.35,0,-5.2); PO.add(g);
+  [-1.05,1.05].forEach(function(zo){
+    var col=mesh(new THREE.CylinderGeometry(0.42,0.55,2.9,9),heroRock,0,1.45,zo,0,0,0,g);
+    mesh(new THREE.DodecahedronGeometry(0.6,0),heroRock,0,2.95,zo,0,zo,0,g);
+  });
+  var beam=mesh(new THREE.BoxGeometry(0.9,0.8,3.1),heroRock,0,3.15,0,0,0,0,g);
+  mesh(new THREE.DodecahedronGeometry(0.55,0),heroRock,0.1,3.6,0.4,0,0.8,0,g);
+  mesh(new THREE.DodecahedronGeometry(0.45,0),heroRock,-0.1,3.55,-0.7,0,2.1,0,g);
+  addCollider(-3.35,-6.25,1.1,1.0); addCollider(-3.35,-4.15,1.1,1.0);
+  makeFall(-3.3,2.6,-5.2,Math.PI/2,1.5,2.9,-0.32);
+  label(world,-3.3,3.9,-5.2,'— THE ARCH —',3.4,'#ffd95e',90);
+})();
+/* ---- columns with purple capsule light panels (the film) ---- */
+function grottoColumn(x,z){
+  var g=new THREE.Group(); g.position.set(x,0,z); PO.add(g);
+  mesh(new THREE.CylinderGeometry(0.3,0.36,5.3,12),goldVeinMat(2,3),0,2.65,0,0,0,0,g);
+  mesh(new THREE.TorusGeometry(0.34,0.045,8,20),goldSmoothMat,0,4.9,0,Math.PI/2,0,0,g);
+  mesh(new THREE.TorusGeometry(0.37,0.045,8,20),goldSmoothMat,0,0.45,0,Math.PI/2,0,0,g);
+  var panel=new THREE.Mesh(new THREE.CapsuleGeometry(0.13,1.1,4,10),
+    new THREE.MeshBasicMaterial({color:0xa86bff}));
+  panel.position.set(0,2.2,0.34); g.add(panel);
+  var panel2=panel.clone(); panel2.position.z=-0.34; g.add(panel2);
+  var lt=new THREE.PointLight(0x9a5cff,0.55,5.5,1.8); lt.position.set(0,2.4,0); g.add(lt);
+  addCollider(x,z,0.85,0.85);
+  return {panel:panel,panel2:panel2,light:lt};
+}
+var colA=grottoColumn(1.7,1.1), colB=grottoColumn(1.7,5.9),
+    colC=grottoColumn(0.1,-2.7), colD=grottoColumn(5.9,-3.6);
+animProps.columns=[colA,colB,colC,colD];
+/* warm + purple key lights */
+var ltPool=new THREE.PointLight(0xffc27a,1.15,13,1.6); ltPool.position.set(-2.6,3.9,3.4); PO.add(ltPool);
+var ltGrotto=new THREE.PointLight(0xffb45e,0.95,12,1.6); ltGrotto.position.set(-1,3.6,-4.6); PO.add(ltGrotto);
+var ltPurple=new THREE.PointLight(0x8a4dff,0.5,10,1.7); ltPurple.position.set(3.4,3.8,-0.4); PO.add(ltPurple);
+animProps.keyLights={pool:ltPool,grotto:ltGrotto,purple:ltPurple};
+[[-5.6,-6.0],[ -6.2,3.4]].forEach(function(p){
+  var up=new THREE.PointLight(0xff9a2a,0.7,5.5,1.8); up.position.set(p[0],0.4,p[1]); PO.add(up);
+});
+/* ================= THE SPIRAL SLIDE (hero) ================= */
+(function(){
+  var cx=6.6, cz=4.9;
+  var col=mesh(new THREE.CylinderGeometry(0.8,1.05,4.6,12),heroRock,cx,2.3,cz);
+  rockCluster(cx+0.4,cz-0.6,3,0.8,heroRock); rockCluster(cx-0.7,cz+0.5,2,0.7,heroRock);
+  var plat=mesh(new THREE.CylinderGeometry(1.5,1.5,0.14,20),goldVeinMat(2,2),cx,4.62,cz);
+  var rail=mesh(new THREE.TorusGeometry(1.42,0.035,8,32),goldSmoothMat,cx,5.25,cz,Math.PI/2,0,0);
+  addCollider(cx,cz,2.5,2.5);
+  /* helical U-channel: glossy black-gold, water ribbon inside */
+  var turns=1.34, segs=110, R=1.58, y0=4.35, y1=0.62, a0=Math.PI*0.15;
+  var prof=[[-0.48,0.24],[-0.26,0.03],[0,0],[0.26,0.03],[0.48,0.24]];
+  /* build the channel by sweeping the U profile along the helix */
+  function buildHelix(profArr,mat,lift,uvScale){
+    var posArr=[], idx=[], uvs=[];
+    for(var i=0;i<=segs;i++){
+      var u=i/segs, a=a0+u*turns*Math.PI*2, y=y0+(y1-y0)*u;
+      var px=cx+Math.cos(a)*R, pz=cz+Math.sin(a)*R;
+      var rx=Math.cos(a), rz=Math.sin(a);
+      for(var j=0;j<profArr.length;j++){
+        var o=profArr[j][0], h=profArr[j][1]+(lift||0);
+        /* bank: raise the OUTER edge by tilting profile around tangent */
+        var banked=h+Math.max(0,-o)*0.0+ (o<0? -o*0.22 : o*0.05);
+        posArr.push(px+rx*o, y+banked, pz+rz*o);
+        uvs.push(u*turns*(uvScale||6), j/(profArr.length-1));
+      }
+    }
+    for(var i2=0;i2<segs;i2++) for(var j2=0;j2<profArr.length-1;j2++){
+      var A=i2*profArr.length+j2, B=A+profArr.length;
+      idx.push(A,B,A+1, B,B+1,A+1);
+    }
+    var geo=new THREE.BufferGeometry();
+    geo.setAttribute('position',new THREE.Float32BufferAttribute(posArr,3));
+    geo.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
+    geo.setIndex(idx); geo.computeVertexNormals();
+    var m=new THREE.Mesh(geo,mat); m.castShadow=true; m.receiveShadow=true; PO.add(m);
+    return m;
+  }
+  var slideMat=goldVeinMat(6,1,0.16);
+  slideMat.side=THREE.DoubleSide;
+  buildHelix(prof,slideMat,0,6);
+  /* water ribbon flowing down the channel */
+  var wT=waterTex(6,1);
+  animWaters.push({t:wT,vx:-0.55,vy:0,feed:'falls'});
+  var slideWaterMat=new THREE.MeshStandardMaterial({color:0x9fe8ff,transparent:true,opacity:0.5,roughness:0.05,
+    normalMap:wT,normalScale:new THREE.Vector2(0.6,0.6),envMapIntensity:1.5,side:THREE.DoubleSide,depthWrite:false});
+  buildHelix([[-0.3,0.045],[0,0.035],[0.3,0.045]],slideWaterMat,0.012,6);
+  /* mouth splash: foam + rings where the slide pours out */
+  var endA=a0+turns*Math.PI*2, mx=cx+Math.cos(endA)*R, mz=cz+Math.sin(endA)*R;
+  var foamMat=new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(foamCvs),transparent:true,opacity:0.8,depthWrite:false});
+  var fm=new THREE.Mesh(new THREE.CircleGeometry(0.75,20),foamMat);
+  fm.rotation.x=-Math.PI/2; fm.position.set(mx,-0.28,mz); fm.renderOrder=2; PO.add(fm);
+  animProps.slideFoam=foamMat;
+  label(world,cx,5.9,cz,'— THE SPIRAL SLIDE —',4.2,'#ffd95e',0);
+})();
+/* ================= SWIM-UP BAR ================= */
+(function(){
+  var g=new THREE.Group(); PO.add(g);
+  /* curved counter: black marble with gold veins, gold trim */
+  var counter=mesh(new THREE.CylinderGeometry(2.35,2.45,1.04,24,1,true,Math.PI*0.62,Math.PI*0.76),goldVeinMat(4,1,0.2),7.05,0.52,-0.2,0,0,0,g);
+  counter.material.side=THREE.DoubleSide;
+  var top=mesh(new THREE.CylinderGeometry(2.5,2.5,0.09,24,1,false,Math.PI*0.6,Math.PI*0.8),goldVeinMat(4,1,0.12),7.05,1.08,-0.2,0,0,0,g);
+  var trim=mesh(new THREE.TorusGeometry(2.42,0.03,8,32,Math.PI*0.76),ledMat,7.05,0.98,-0.2,Math.PI/2,0,Math.PI*0.62,g);
+  trim.castShadow=false;
+  addCollider(6.3,-0.2,2.6,3.6);
+  contactShadow(6.2,-0.2,3.4,4.4,0.5);
+  /* stools standing in the channel shallows */
+  [-1.35,0.05,1.45].forEach(function(sz){
+    mesh(new THREE.CylinderGeometry(0.09,0.13,0.62,10),goldSmoothMat,4.62,0.0,sz,0,0,0,g);
+    mesh(new THREE.CylinderGeometry(0.3,0.3,0.09,14),goldVeinMat(1,1,0.2),4.62,0.36,sz,0,0,0,g);
+  });
+  /* back bar: lit bottle shelves on the east wall */
+  var backPanel=plane(world,8.78,2.3,-0.2,4.6,3.4,0x1a1206,{ry:-90,emissive:0xff9a2a,ei:0.16,rough:0.4});
+  var bottleCols=[0x7fd4ff,0xffb347,0x9fe870,0xff6b9d,0xffe066,0xb46bff,0x6bf2d4,0xff8c66];
+  for(var sh=0;sh<3;sh++){
+    mesh(new THREE.BoxGeometry(0.18,0.06,4.0),goldSmoothMat,8.62,1.35+sh*0.85,-0.2,0,0,0,g);
+    for(var bi=0;bi<9;bi++){
+      var bc=bottleCols[(sh*3+bi)%bottleCols.length];
+      mesh(new THREE.CylinderGeometry(0.055,0.065,0.34+((bi*13)%10)/40,8),
+        new THREE.MeshStandardMaterial({color:bc,roughness:0.15,metalness:0.1,emissive:bc,emissiveIntensity:0.35,envMapIntensity:1.2}),
+        8.6,1.55+sh*0.85,-1.85+bi*0.42,0,0,0,g);
+    }
+  }
+  /* brass pendants over the counter */
+  animProps.pendants=[];
+  [-1.5,-0.2,1.1].forEach(function(pz,i){
+    mesh(new THREE.CylinderGeometry(0.015,0.015,1.3,6),goldSmoothMat,5.6,4.35,pz,0,0,0,g);
+    var shade=mesh(new THREE.CylinderGeometry(0.07,0.24,0.22,12,1,true),goldSmoothMat,5.6,3.62,pz,0,0,0,g);
+    shade.material=goldSmoothMat;
+    var bulb=new THREE.Mesh(new THREE.SphereGeometry(0.055,10,8),new THREE.MeshBasicMaterial({color:0xffd9a0}));
+    bulb.position.set(5.6,3.55,pz); g.add(bulb);
+    var pl=new THREE.PointLight(0xffc27a,0.75,6.5,1.8); pl.position.set(5.6,3.4,pz); g.add(pl);
+    animProps.pendants.push({light:pl,bulb:bulb,ph:i*2.1});
+  });
+  ceilRing(5.9,-0.2,1.9,4.82,goldSmoothMat);
+  label(world,6.1,4.35,-0.2,'— SWIM-UP BAR —',3.6,'#ffd95e',-90);
+  /* the bar bell */
+  var bellBase=mesh(new THREE.CylinderGeometry(0.09,0.11,0.03,12),goldSmoothMat,5.15,1.16,0.9,0,0,0,g);
+  var bell=mesh(new THREE.SphereGeometry(0.075,14,10,0,Math.PI*2,0,Math.PI/2),goldSmoothMat,5.15,1.18,0.9,0,0,0,g);
+  var bellHit=el('a-sphere',world,{position:'5.15 1.3 0.9',radius:0.3,material:'visible:false'});
+  makeInteractable(bellHit,'barbell','Ring the bar bell');
+  promptSign(world,5.15,1.62,0.9,'RING',-90);
+})();
+</script>
+
+<script>
+/* ================= ANIMATED WALL PANEL (by the main pool) ================= */
+animProps.panel=(function(){
+  var cvs=document.createElement('canvas'); cvs.width=512; cvs.height=320;
+  var tex=new THREE.CanvasTexture(cvs); tex.colorSpace=THREE.SRGBColorSpace;
+  var frame=mesh(new THREE.BoxGeometry(0.14,2.0,3.1),goldVeinMat(2,1),-8.72,2.7,6.3);
+  var scr=new THREE.Mesh(new THREE.PlaneGeometry(2.85,1.78),
+    new THREE.MeshBasicMaterial({map:tex}));
+  scr.position.set(-8.63,2.7,6.3); scr.rotation.y=Math.PI/2; PO.add(scr);
+  var hit=el('a-box',world,{position:'-8.6 2.7 6.3',width:0.4,height:2.1,depth:3.2,material:'visible:false'});
+  makeInteractable(hit,'panel','Cycle the living wall: gold, rain, stars, waves');
+  label(world,-8.6,4.05,6.3,'— LIVING WALL —',3.2,'#ffd95e',90);
+  var modes=['gold','rain','stars','waves'], mi=0, drops=[], stars=[];
+  for(var i=0;i<70;i++) drops.push({x:Math.random()*512,y:Math.random()*320,s:140+Math.random()*220,l:8+Math.random()*16});
+  for(var j=0;j<110;j++) stars.push({x:Math.random()*512,y:Math.random()*320,r:Math.random()*1.6+0.3,tw:Math.random()*6.28});
+  function draw(t){
+    var g=cvs.getContext('2d'), mode=modes[mi];
+    if(mode==='gold'){
+      g.fillStyle='#0a0702'; g.fillRect(0,0,512,320);
+      for(var i2=0;i2<5;i2++){
+        var yy=((t*0.03*(1+i2*0.3)+i2*70)%380)-30;
+        var gr=g.createLinearGradient(0,yy-26,0,yy+26);
+        gr.addColorStop(0,'rgba(201,162,39,0)'); gr.addColorStop(0.5,'rgba(255,217,94,0.5)'); gr.addColorStop(1,'rgba(201,162,39,0)');
+        g.fillStyle=gr; g.fillRect(0,yy-26,512,52);
+      }
+      g.fillStyle='rgba(255,217,94,0.85)'; g.font='bold 30px Arial'; g.textAlign='center';
+      g.fillText('DEEZY',256,168);
+    } else if(mode==='rain'){
+      g.fillStyle='rgba(4,8,16,0.35)'; g.fillRect(0,0,512,320);
+      g.strokeStyle='rgba(160,210,255,0.75)'; g.lineWidth=1.4; g.beginPath();
+      drops.forEach(function(d){ d.y+=d.s*0.016; if(d.y>330){d.y=-12; d.x=Math.random()*512;}
+        g.moveTo(d.x,d.y); g.lineTo(d.x-2,d.y+d.l); });
+      g.stroke();
+    } else if(mode==='stars'){
+      g.fillStyle='#020208'; g.fillRect(0,0,512,320);
+      stars.forEach(function(s){
+        var a=0.35+0.65*Math.abs(Math.sin(t*0.001+s.tw));
+        g.fillStyle='rgba(255,240,200,'+a+')';
+        g.beginPath(); g.arc(s.x,s.y,s.r,0,6.29); g.fill();
+      });
+      var mg=g.createRadialGradient(400,70,4,400,70,44);
+      mg.addColorStop(0,'rgba(255,246,214,0.95)'); mg.addColorStop(1,'rgba(255,246,214,0)');
+      g.fillStyle=mg; g.beginPath(); g.arc(400,70,44,0,6.29); g.fill();
+    } else {
+      g.fillStyle='#02141c'; g.fillRect(0,0,512,320);
+      for(var wI=0;wI<4;wI++){
+        g.strokeStyle='rgba(64,200,230,'+(0.65-wI*0.13)+')'; g.lineWidth=2.4; g.beginPath();
+        for(var x=0;x<=512;x+=8){
+          var y=200+wI*26+Math.sin(x*0.02+t*0.0016+wI*1.4)*13;
+          if(x===0) g.moveTo(x,y); else g.lineTo(x,y);
+        }
+        g.stroke();
+      }
+    }
+    tex.needsUpdate=true;
+  }
+  return {draw:draw,cycle:function(){ mi=(mi+1)%modes.length; return modes[mi]; },mode:function(){ return modes[mi]; }};
+})();
+/* ================= PLANTING, BENCH, RAIL ================= */
+function planter(x,z,s){
+  var g=new THREE.Group(); g.position.set(x,0,z); PO.add(g);
+  mesh(new THREE.BoxGeometry(1.15*s,0.55,1.15*s),rockGoldMat(1,1),0,0.27,0,0,0.4,0,g);
+  mesh(new THREE.CylinderGeometry(0.07*s,0.11*s,1.5*s,7),
+    new THREE.MeshStandardMaterial({color:0x4a3826,roughness:0.95}),0.14*s,1.1*s,0,0,0,0.22,g);
+  for(var f=0;f<7;f++){
+    var fr=new THREE.Mesh(frondGeo,leafMat2);
+    fr.position.set(0.32*s,1.85*s,0);
+    fr.rotation.y=f/7*Math.PI*2; fr.rotation.z=0.5+((f*31)%10)/22;
+    fr.scale.setScalar(0.95*s); fr.castShadow=false; g.add(fr);
+  }
+  for(var f2=0;f2<4;f2++){
+    var fb=new THREE.Mesh(frondGeo,leafMat2);
+    fb.position.set((f2-1.5)*0.2*s,0.62*s,(f2%2?0.3:-0.3)*s);
+    fb.rotation.y=f2*1.7; fb.rotation.z=0.95; fb.scale.setScalar(0.5*s); g.add(fb);
+  }
+  addCollider(x,z,1.0*s,1.0*s);
+  contactShadow(x,z,1.7*s,1.7*s,0.5);
+}
+planter(-7.7,-3.4,1.0); planter(-2.0,-6.5,0.9); planter(1.35,-3.25,0.95);
+planter(5.55,3.05,0.9); planter(-6.75,6.35,1.05); planter(0.75,6.45,0.95);
+planter(5.05,6.55,0.9); planter(-8.35,-1.6,0.95); planter(8.35,-4.7,0.9);
+/* black marble bench with gold veins (from the film) */
+(function(){
+  mesh(new THREE.BoxGeometry(2.4,0.14,0.85),goldVeinMat(2,1,0.15),-3.6,0.5,6.9);
+  mesh(new THREE.BoxGeometry(0.18,0.45,0.7),goldVeinMat(1,1),-4.5,0.22,6.9);
+  mesh(new THREE.BoxGeometry(0.18,0.45,0.7),goldVeinMat(1,1),-2.7,0.22,6.9);
+  addCollider(-3.6,6.9,2.5,0.95);
+})();
+/* gold handrail along the channel A north bank */
+(function(){
+  for(var px=-3;px<=1.7;px+=0.95) mesh(new THREE.CylinderGeometry(0.03,0.03,0.6,8),goldSmoothMat,px,0.3,-6.42);
+  var rail=mesh(new THREE.CylinderGeometry(0.035,0.035,4.9,8),goldSmoothMat,-0.65,0.62,-6.42,0,0,Math.PI/2);
+  addCollider(-0.65,-6.42,5.0,0.3);
+})();
+/* ================= CONTROL PEDESTALS (by the spawn deck) ================= */
+function pedestal(x,z,action,prompt,sign){
+  mesh(new THREE.BoxGeometry(0.34,0.95,0.34),goldVeinMat(1,1),x,0.47,z);
+  mesh(new THREE.BoxGeometry(0.44,0.07,0.44),goldSmoothMat,x,0.99,z);
+  goldButton(world,x,1.18,z,action,prompt,0.11);
+  promptSign(world,x,1.62,z,sign,180);
+  addCollider(x,z,0.5,0.5);
+}
+pedestal(-1.5,6.55,'falls','Toggle the waterfalls','FALLS');
+pedestal(0.55,6.55,'mood','Cycle light mood: gold, purple night, bright','MOOD');
+/* ================= WADING ZONES + DUST ================= */
+var WADE=[
+  {minX:-7.4,maxX:-3.8,minZ:-6.55,maxZ:-3.85,d:0.34},
+  {minX:-3.6,maxX:2.0,minZ:-6.15,maxZ:-4.05,d:0.3},
+  {minX:2.35,maxX:4.45,minZ:-5.2,maxZ:3.2,d:0.3},
+  {minX:0.8,maxX:3.6,minZ:2.2,maxZ:4.2,d:0.3},
+  {minX:4.3,maxX:5.6,minZ:4.6,maxZ:6.0,d:0.3},
+  {minX:3.2,maxX:4.6,minZ:2.8,maxZ:4.4,d:0.3},
+  {minX:-6.3,maxX:1.1,minZ:1.3,maxZ:5.5,d:0.34},
+  {minX:-5.2,maxX:0.0,minZ:2.2,maxZ:4.6,d:0.58}
+];
+function wadeDepthAt(x,z){
+  var d=0;
+  for(var i=0;i<WADE.length;i++){ var w=WADE[i];
+    if(x>=w.minX&&x<=w.maxX&&z>=w.minZ&&z<=w.maxZ) d=Math.max(d,w.d); }
+  return d;
+}
+animProps.dust=(function(){
+  var N=130, pos=new Float32Array(N*3), vel=[];
+  for(var i=0;i<N;i++){
+    pos[i*3]=-7+Math.random()*13; pos[i*3+1]=0.3+Math.random()*4.2; pos[i*3+2]=-6.5+Math.random()*12.5;
+    vel.push({vy:-(0.02+Math.random()*0.045),ph:Math.random()*6.28,sw:0.02+Math.random()*0.05});
+  }
+  var geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  var pts=new THREE.Points(geo,new THREE.PointsMaterial({map:poolTex,color:0xffe2b0,size:0.05,
+    transparent:true,opacity:0.55,depthWrite:false}));
+  pts.frustumCulled=false; PO.add(pts);
+  return {pos:pos,vel:vel,attr:geo.getAttribute('position')};
+})();
+</script>
+
+<script>
+/* ================= AUDIO (generated, spatial) ================= */
+var AC=null, masterGain=null, soundOn=false, waterNodes=[], stepBuf=null, splashBuf=null;
+function initAudio(){
+  if(AC) return;
+  try{ AC=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return; }
+  masterGain=AC.createGain(); masterGain.gain.value=0.9; masterGain.connect(AC.destination);
+  function noiseBuffer(sec){
+    var len=Math.floor(AC.sampleRate*sec), buf=AC.createBuffer(1,len,AC.sampleRate), d=buf.getChannelData(0);
+    for(var i=0;i<len;i++) d[i]=Math.random()*2-1;
+    return buf;
+  }
+  var nb=noiseBuffer(2);
+  function filteredNoise(freq,q,type){
+    var src=AC.createBufferSource(); src.buffer=nb; src.loop=true;
+    var f=AC.createBiquadFilter(); f.type=type||'bandpass'; f.frequency.value=freq; f.Q.value=q;
+    var g=AC.createGain(); g.gain.value=0;
+    src.connect(f); f.connect(g); g.connect(masterGain); src.start();
+    return g;
+  }
+  window.__roomGain=filteredNoise(220,0.4,'lowpass'); __roomGain.gain.value=0.012;
+  function waterAt(x,y,z,freq,baseGain){
+    var src=AC.createBufferSource(); src.buffer=nb; src.loop=true; src.playbackRate.value=0.85+Math.random()*0.3;
+    var f=AC.createBiquadFilter(); f.type='bandpass'; f.frequency.value=freq; f.Q.value=0.55;
+    var g=AC.createGain(); g.gain.value=0;
+    var p=AC.createPanner(); p.panningModel='HRTF'; p.distanceModel='inverse';
+    p.refDistance=2.2; p.maxDistance=26; p.rolloffFactor=1.1;
+    if(p.positionX){ p.positionX.value=x; p.positionY.value=y; p.positionZ.value=z; }
+    else p.setPosition(x,y,z);
+    src.connect(f); f.connect(g); g.connect(p); p.connect(masterGain); src.start();
+    waterNodes.push({g:g,base:baseGain});
+  }
+  waterAt(-5.6,1.6,-6.1,760,0.15);   /* fall 1 */
+  waterAt(-3.0,1.2,-5.2,880,0.11);   /* arch fall */
+  waterAt(-6.1,1.7,3.4,700,0.16);    /* main fall */
+  waterAt(3.4,0.2,-0.6,1150,0.035);  /* channel burble */
+  stepBuf=(function(){
+    var len=Math.floor(AC.sampleRate*0.07), buf=AC.createBuffer(1,len,AC.sampleRate), d=buf.getChannelData(0);
+    for(var i=0;i<len;i++){ var t=i/len; d[i]=(Math.random()*2-1)*(1-t)*(1-t)*0.8; }
+    return buf;
+  })();
+  splashBuf=(function(){
+    var len=Math.floor(AC.sampleRate*0.16), buf=AC.createBuffer(1,len,AC.sampleRate), d=buf.getChannelData(0);
+    for(var i=0;i<len;i++){ var t=i/len; d[i]=(Math.random()*2-1)*Math.sin(t*Math.PI)*0.7; }
+    return buf;
+  })();
+}
+function setWaterSound(on){
+  if(!AC) return;
+  var t=AC.currentTime;
+  waterNodes.forEach(function(n){ n.g.gain.cancelScheduledValues(t); n.g.gain.linearRampToValueAtTime(on?n.base:0,t+0.7); });
+}
+function playStep(wading){
+  if(!AC||!soundOn) return;
+  var src=AC.createBufferSource(); src.buffer=wading?splashBuf:stepBuf;
+  var f=AC.createBiquadFilter(); f.type=wading?'bandpass':'lowpass';
+  f.frequency.value=wading?900:480; 
+  var g=AC.createGain(); g.gain.value=wading?0.24:0.15;
+  src.connect(f); f.connect(g); g.connect(masterGain); src.start();
+}
+function playChime(){
+  if(!AC||!soundOn) return;
+  [1568,2093].forEach(function(fr,i){
+    var o=AC.createOscillator(); o.type='sine'; o.frequency.value=fr;
+    var g=AC.createGain(); var t=AC.currentTime+i*0.09;
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.12,t+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+0.8);
+    o.connect(g); g.connect(masterGain); o.start(t); o.stop(t+0.85);
+  });
+}
+function playClick(){
+  if(!AC||!soundOn) return;
+  var o=AC.createOscillator(); o.type='triangle'; o.frequency.value=660;
+  var g=AC.createGain(); var t=AC.currentTime;
+  g.gain.setValueAtTime(0.1,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.09);
+  o.connect(g); g.connect(masterGain); o.start(t); o.stop(t+0.1);
+}
+var soundBtn=document.getElementById('soundBtn');
+soundBtn.addEventListener('click',function(){
+  initAudio();
+  if(AC&&AC.state==='suspended') AC.resume();
+  soundOn=!soundOn;
+  if(masterGain) masterGain.gain.value=soundOn?0.9:0;
+  if(soundOn) setWaterSound(waters.falls.on);
+  soundBtn.innerHTML=soundOn?'&#128266; Sound: ON':'&#128263; Sound: OFF';
+});
+/* ================= HDRI / IMAGE LIGHTING ================= */
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+try{
+  var sceneEl=document.querySelector('a-scene');
+  var renderer=sceneEl.renderer;
+  renderer.toneMapping=THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure=1.12;
+  renderer.outputColorSpace=THREE.SRGBColorSpace;
+  var threeScene=sceneEl.object3D;
+  var pmrem=new THREE.PMREMGenerator(renderer);
+  function applyEnv(tex,intensity){
+    threeScene.environment=tex;
+    threeScene.traverse(function(o){
+      if(o.isMesh&&o.material&&'envMapIntensity' in o.material&&!o.material.userData.keepEnv)
+        o.material.envMapIntensity=intensity;
+    });
+  }
+  window.__setEnvIntensity=function(v){
+    threeScene.traverse(function(o){
+      if(o.isMesh&&o.material&&'envMapIntensity' in o.material&&!o.material.userData.keepEnv)
+        o.material.envMapIntensity=v;
+    });
+  };
+  new RGBELoader().load(
+    'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/warm_restaurant_night_1k.hdr',
+    function(hdr){
+      var envTex=pmrem.fromEquirectangular(hdr).texture;
+      applyEnv(envTex,0.75);
+      hdr.dispose();
+      if(window.__texDone) window.__setLoadMsg('Ready — grotto test live. Waterfall sound ON with the falls.');
+      else window.__setLoadMsg('HDRI light ready — textures finishing…');
+    },
+    undefined,
+    function(){
+      var envTex=pmrem.fromScene(new RoomEnvironment(),0.04).texture;
+      applyEnv(envTex,0.45);
+      window.__setLoadMsg('Ready — grotto test live (fallback lighting).');
+    }
+  );
+}catch(e){ if(window.__setLoadMsg) window.__setLoadMsg('Ready — grotto test live (standard lighting).'); }
+</script>
+
+<script>
+/* ================= INTERACTIONS + MOOD ================= */
+var toastTimer=null;
+function showToast(msg){
+  var t=document.getElementById('toast');
+  t.textContent=msg; t.style.opacity='1';
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(function(){ t.style.opacity='0'; },2600);
+}
+var MOODS=[
+  {name:'Golden Grotto',pool:1.15,grotto:0.95,purple:0.5,amb:0.5,hemi:0.35,dir:0.55,col:0.55,env:0.75},
+  {name:'Purple Night',pool:0.45,grotto:0.35,purple:1.5,amb:0.22,hemi:0.15,dir:0.2,col:1.5,env:0.4},
+  {name:'Bright Day',pool:1.5,grotto:1.3,purple:0.35,amb:0.85,hemi:0.6,dir:1.0,col:0.4,env:1.1}
+];
+var moodIdx=0, moodCur=JSON.parse(JSON.stringify(MOODS[0])), moodTgt=MOODS[0];
+function doAction(action){
+  playClick();
+  if(action==='falls'){
+    waters.falls.on=!waters.falls.on;
+    waters.falls.target=waters.falls.on?1:0;
+    setWaterSound(waters.falls.on);
+    showToast(waters.falls.on?'Waterfalls flowing':'Waterfalls easing off…');
+  } else if(action==='mood'){
+    moodIdx=(moodIdx+1)%MOODS.length; moodTgt=MOODS[moodIdx];
+    showToast('Light mood: '+moodTgt.name);
+  } else if(action==='panel'){
+    var m=animProps.panel.cycle();
+    showToast('Living wall: '+m);
+  } else if(action==='barbell'){
+    playChime();
+    showToast('Ding! The bartender heard that.');
+  }
+}
+document.querySelector('a-scene').addEventListener('loaded',function(){
+  interactables.forEach(function(en){
+    en.addEventListener('click',function(){ doAction(en.getAttribute('data-action')); });
+  });
+});
+/* ================= LOCOMOTION + PHYSICS =================
+   Proven /3d/ input rig (XRSession sources, tick loop, head-yaw
+   forward, smooth right-stick turn) — the v6.2 vector rig had
+   NOT landed in /3d/ when this was built — PLUS the physics
+   layer: velocity ramps (accel/decel), collision + sliding,
+   wading drag + step-down, all eased, never instant.          */
+var moveState={vx:0,vz:0,stepAcc:0,rigY:0,bobPh:0};
+AFRAME.registerComponent('grotto-move',{
+  tick:function(time,deltaMs){
+    var dt=Math.min(0.05,(deltaMs||16)/1000);
+    var sceneEl=this.el.sceneEl;
+    var rig=document.getElementById('rig');
+    var cam=document.getElementById('cam');
+    var session=sceneEl.renderer&&sceneEl.renderer.xr?sceneEl.renderer.xr.getSession():null;
+    var srcL=null,srcR=null;
+    if(session){
+      var srcs=session.inputSources;
+      for(var i=0;i<srcs.length;i++){
+        if(srcs[i].handedness==='left') srcL=srcs[i];
+        else if(srcs[i].handedness==='right') srcR=srcs[i];
+      }
+    }
+    function axesOf(src){
+      if(!src||!src.gamepad) return null;
+      var ax=src.gamepad.axes||[];
+      if(ax.length>=4) return [ax[2],ax[3]];
+      if(ax.length>=2) return [ax[0],ax[1]];
+      return null;
+    }
+    var mvX=0,mvY=0,turnX=0;
+    var aL=axesOf(srcL), aR=axesOf(srcR);
+    if(aL){ mvX+=aL[0]; mvY+=aL[1]; }
+    if(aR){ turnX+=aR[0]; if(!aL){ mvX+=aR[0]*0; mvY+=aR[1]; } }
+    var kb=window.__keys||{};
+    if(kb['KeyW']||kb['ArrowUp']) mvY-=1;
+    if(kb['KeyS']||kb['ArrowDown']) mvY+=1;
+    if(kb['KeyA']||kb['ArrowLeft']) mvX-=1;
+    if(kb['KeyD']||kb['ArrowRight']) mvX+=1;
+    if(kb['KeyQ']) turnX-=1;
+    if(kb['KeyE']) turnX+=1;
+    function dz(v){ return Math.abs(v)<0.14?0:v; }
+    mvX=dz(mvX); mvY=dz(mvY); turnX=dz(turnX);
+    /* smooth turn (proportional, no snap) */
+    if(turnX!==0){
+      var rot=rig.getAttribute('rotation')||{x:0,y:0,z:0};
+      rig.setAttribute('rotation',{x:rot.x,y:rot.y-turnX*105*dt,z:rot.z});
+    }
+    /* head-yaw forward (camera world direction projected flat) */
+    var yaw=0;
+    try{
+      var dir=new THREE.Vector3();
+      cam.object3D.getWorldDirection(dir);
+      yaw=Math.atan2(-dir.x,-dir.z);
+    }catch(e){}
+    var sin=Math.sin(yaw), cos=Math.cos(yaw);
+    /* wading: drag + step-down target from the zones */
+    var rp=rig.object3D.position;
+    var depth=wadeDepthAt(rp.x,rp.z);
+    var wading=depth>0;
+    var maxSpeed=(wading?1.15:2.6);
+    var desX=(mvX*cos-mvY*sin)*maxSpeed;
+    var desZ=(-mvY*cos-mvX*sin)*maxSpeed;
+    /* acceleration / deceleration ramps (mass feel) */
+    var rate=(Math.abs(desX)>0.01||Math.abs(desZ)>0.01)?7.5:9.5;
+    var dvx=desX-moveState.vx, dvz=desZ-moveState.vz;
+    var dvLen=Math.hypot(dvx,dvz), maxDv=rate*dt;
+    if(dvLen>maxDv&&dvLen>0){ dvx*=maxDv/dvLen; dvz*=maxDv/dvLen; }
+    moveState.vx+=dvx; moveState.vz+=dvz;
+    /* integrate with per-axis collision => wall sliding */
+    var nx=rp.x+moveState.vx*dt, nz=rp.z+moveState.vz*dt;
+    var R=0.42;
+    function blocked(x,z){
+      if(x<-8.75||x>8.75||z<-7.25||z>7.25) return true;
+      for(var ci=0;ci<colliders.length;ci++){
+        var c=colliders[ci];
+        if(x>c.minX-R&&x<c.maxX+R&&z>c.minZ-R&&z<c.maxZ+R) return true;
+      }
+      return false;
+    }
+    if(!blocked(nx,rp.z)) rp.x=nx; else moveState.vx=0;
+    if(!blocked(rp.x,nz)) rp.z=nz; else moveState.vz=0;
+    /* buoyancy step-down: ease the rig into the water depth */
+    var targetY=wading?-depth*0.62:0;
+    moveState.rigY+=(targetY-moveState.rigY)*Math.min(1,dt*3.2);
+    var spd=Math.hypot(moveState.vx,moveState.vz);
+    var bob=0;
+    if(wading&&spd>0.2){ moveState.bobPh+=dt*7; bob=Math.sin(moveState.bobPh)*0.02; }
+    rp.y=moveState.rigY+bob;
+    /* footsteps / splashes paced by speed */
+    if(spd>0.35){
+      moveState.stepAcc+=dt*spd;
+      var stride=wading?1.15:1.9;
+      if(moveState.stepAcc>stride){ moveState.stepAcc=0; playStep(wading); }
+    }
+    /* spatial audio listener follows the head */
+    if(AC&&soundOn){
+      try{
+        var wp=new THREE.Vector3();
+        cam.object3D.getWorldPosition(wp);
+        var fw=new THREE.Vector3(); cam.object3D.getWorldDirection(fw);
+        var L=AC.listener;
+        if(L.positionX){ L.positionX.value=wp.x; L.positionY.value=wp.y; L.positionZ.value=wp.z;
+          L.forwardX.value=fw.x; L.forwardY.value=fw.y; L.forwardZ.value=fw.z; L.upX.value=0; L.upY.value=1; L.upZ.value=0; }
+        else if(L.setPosition){ L.setPosition(wp.x,wp.y,wp.z); L.setOrientation(fw.x,fw.y,fw.z,0,1,0); }
+      }catch(e){}
+    }
+  }
+});
+window.__keys={};
+window.addEventListener('keydown',function(e){ window.__keys[e.code]=true; });
+window.addEventListener('keyup',function(e){ window.__keys[e.code]=false; });
+document.querySelector('a-scene').setAttribute('grotto-move','');
+/* ================= ANIMATION TICK ================= */
+var lastPanelDraw=0;
+AFRAME.registerComponent('grotto-anim',{
+  tick:function(time,deltaMs){
+    var dt=Math.min(0.05,(deltaMs||16)/1000);
+    var t=time/1000;
+    /* falls level: eased ramp (moving parts never snap) */
+    var F=waters.falls;
+    F.level+=(F.target-F.level)*Math.min(1,dt*1.5);
+    if(Math.abs(F.target-F.level)<0.002) F.level=F.target;
+    var lvl=F.level;
+    /* water scrolling — channel/falls follow the flow, pools idle */
+    for(var wi=0;wi<animWaters.length;wi++){
+      var w=animWaters[wi];
+      var mult=w.feed==='always'?1:lvl;
+      w.t.offset.x+=w.vx*dt*mult; w.t.offset.y+=w.vy*dt*mult;
+    }
+    /* waterfalls: sheets, foam, rings, droplets, mist, light */
+    for(var fi=0;fi<animProps.fallFx.length;fi++){
+      var fx=animProps.fallFx[fi];
+      fx.sheets.forEach(function(s,si){ s.material.opacity=(si?0.4:0.55)*(0.06+0.94*lvl); s.visible=lvl>0.02; });
+      fx.foamMat.opacity=0.15+0.7*lvl;
+      fx.foam.rotation.z+=dt*0.12*(0.3+lvl);
+      var fscale=1+Math.sin(t*2.1+fi*2)*0.05; fx.foam.scale.set(fscale,fscale,1);
+      fx.rings.forEach(function(r){
+        r.ph+=dt/1.7*(0.25+lvl);
+        if(r.ph>1) r.ph-=1;
+        var e=1-Math.pow(1-r.ph,2);
+        var sc=0.6+1.8*e;
+        r.m.scale.set(sc,sc,1);
+        r.m.material.opacity=0.42*(1-r.ph)*lvl;
+        r.m.visible=lvl>0.03;
+      });
+      var dr=fx.drops;
+      dr.mat.opacity=0.75*lvl;
+      for(var di=0;di<dr.pos.length/3;di++){
+        dr.vel[di*3+1]-=5.5*dt;                       /* gravity */
+        dr.pos[di*3]+=dr.vel[di*3]*dt;
+        dr.pos[di*3+1]+=dr.vel[di*3+1]*dt;
+        dr.pos[di*3+2]+=dr.vel[di*3+2]*dt;
+        if(dr.pos[di*3+1]<-dr.drop-0.05){
+          dr.pos[di*3]=(Math.random()-0.5)*dr.width*0.9;
+          dr.pos[di*3+1]=-Math.random()*0.25;
+          dr.pos[di*3+2]=0.1+Math.random()*0.25;
+          dr.vel[di*3]=0; dr.vel[di*3+1]=-0.6-Math.random(); dr.vel[di*3+2]=0.55;
+        }
+      }
+      dr.attr.needsUpdate=true;
+      fx.mists.forEach(function(m){
+        var ph=((t*0.12+m.ph)%1);
+        m.s.position.y=0.25+ph*(m.drop*0.4);
+        m.s.material.opacity=0.13*Math.sin(ph*Math.PI)*lvl;
+        var ms=1.3+ph*1.5; m.s.scale.set(ms,ms*0.55,1);
+      });
+      fx.lightT.intensity=1.1*(0.15+0.85*lvl)*(1+Math.sin(t*7+fi*3)*0.05);
+    }
+    if(animProps.slideFoam) animProps.slideFoam.opacity=0.1+0.7*lvl;
+    /* foam riding the current downhill through the whole system */
+    (function(){
+      var fd=animProps.foamDrift;
+      fd.mat.opacity=0.25+0.5*lvl;
+      for(var i=0;i<fd.parts.length;i++){
+        var p=fd.parts[i];
+        p.s+=samplePath(p.s).spd*dt*(0.25+0.75*lvl);
+        if(p.s>=PATH_TOTAL-0.05){ p.s=0.05; p.lat=(Math.random()*2-1); }
+        var sp=samplePath(p.s);
+        fd.pos[i*3]=sp.x+sp.px*p.lat*sp.w*0.8;
+        fd.pos[i*3+1]=-0.26+Math.sin(t*2+p.j)*0.012;
+        fd.pos[i*3+2]=sp.z+sp.pz*p.lat*sp.w*0.8;
+      }
+      fd.attr.needsUpdate=true;
+    })();
+    /* dust motes: slow fall with drag sway (gravity, gentle) */
+    (function(){
+      var d=animProps.dust;
+      for(var i=0;i<d.vel.length;i++){
+        var v=d.vel[i];
+        d.pos[i*3+1]+=v.vy*dt;
+        d.pos[i*3]+=Math.sin(t*0.6+v.ph)*v.sw*dt;
+        if(d.pos[i*3+1]<0.15){ d.pos[i*3+1]=4.4; d.pos[i*3]=-7+Math.random()*13; d.pos[i*3+2]=-6.5+Math.random()*12.5; }
+      }
+      d.attr.needsUpdate=true;
+    })();
+    /* mood: every light eases toward its target (no snaps) */
+    (function(){
+      var k=1-Math.pow(0.02,dt); /* ~0.8s ease */
+      ['pool','grotto','purple'].forEach(function(key){
+        moodCur[key]+=(moodTgt[key]-moodCur[key])*k;
+        animProps.keyLights[key].intensity=moodCur[key];
+      });
+      moodCur.amb+=(moodTgt.amb-moodCur.amb)*k;
+      moodCur.hemi+=(moodTgt.hemi-moodCur.hemi)*k;
+      moodCur.dir+=(moodTgt.dir-moodCur.dir)*k;
+      moodCur.col+=(moodTgt.col-moodCur.col)*k;
+      var amb=document.getElementById('ambLight'); if(amb) amb.setAttribute('light','intensity',moodCur.amb);
+      var hemi=document.getElementById('hemiLight'); if(hemi) hemi.setAttribute('light','intensity',moodCur.hemi);
+      var dir=document.getElementById('dirLight'); if(dir) dir.setAttribute('light','intensity',moodCur.dir);
+      animProps.columns.forEach(function(c){ c.light.intensity=moodCur.col; });
+      if(window.__setEnvIntensity&&(Math.abs((moodCur.env||0.75)-moodTgt.env)>0.01||Math.random()<0.02)){
+        moodCur.env=(moodCur.env||0.75)+(moodTgt.env-(moodCur.env||0.75))*k;
+        window.__setEnvIntensity(moodCur.env);
+      }
+    })();
+    /* pendant flicker (warm bulbs breathe a little) */
+    animProps.pendants.forEach(function(p){
+      p.light.intensity=0.72+Math.sin(t*9+p.ph)*0.05+Math.sin(t*23+p.ph*2)*0.02;
+    });
+    /* living wall panel at ~15 fps */
+    if(time-lastPanelDraw>66){ lastPanelDraw=time; animProps.panel.draw(time); }
+  }
+});
+document.querySelector('a-scene').setAttribute('grotto-anim','');
+/* ================= UI WIRING ================= */
+document.querySelector('a-scene').addEventListener('enter-vr',function(){
+  document.getElementById('reticle').setAttribute('visible','false');
+});
+document.querySelector('a-scene').addEventListener('exit-vr',function(){
+  document.getElementById('reticle').setAttribute('visible','false');
+});
+document.getElementById('enterVrBtn').addEventListener('click',function(){
+  var s=document.querySelector('a-scene');
+  if(s&&s.enterVR) s.enterVR();
+});
+setTimeout(function(){
+  if(!window.__texDone) return;
+  setLoadMsg('Ready — grotto test live. Waterfall sound ON with the falls.');
+},9000);
+</script>
+</body>
+</html>
