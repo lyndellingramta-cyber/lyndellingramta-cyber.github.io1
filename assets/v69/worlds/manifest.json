@@ -1,0 +1,180 @@
+{
+ "vistas": [
+  {
+   "file": "ch0-aquarium.jpg",
+   "part": "ch0-aquarium.jpg.part01.b64",
+   "bytes": 23988,
+   "sha256": "ed979ec10afa040e8a55890675868ab6b871e42e30e4b3fc1e670749dbc5148f",
+   "b64_chars": 31984,
+   "b64_sha256": "9d8c06578b02d13c4077ed10c057c228d39bdcb398307b2e7a5417146b397178"
+  },
+  {
+   "file": "ch1-fireplace.jpg",
+   "part": "ch1-fireplace.jpg.part01.b64",
+   "bytes": 40413,
+   "sha256": "0c36d436078ac84376a7c31c7f7b8e7a35fc5990209a0dff93101b1890cbaa15",
+   "b64_chars": 53884,
+   "b64_sha256": "f694cc9b55c0b43d3b6247821ffbd11541a8f5b04c1824f787c1efabf3dde9e9"
+  },
+  {
+   "file": "ch3-film1.jpg",
+   "part": "ch3-film1.jpg.part01.b64",
+   "bytes": 46699,
+   "sha256": "567e6e3fa16b52bd624f6b9c924a856c48a6213abdf58d9079c7303fc23b9005",
+   "b64_chars": 62268,
+   "b64_sha256": "72016372e0648c7551ca9cd12976e30520cbd542cbff8b3dd131bed01bb3c183"
+  },
+  {
+   "file": "ch4-film2.jpg",
+   "part": "ch4-film2.jpg.part01.b64",
+   "bytes": 59072,
+   "sha256": "6365c244802a2323c41539632c992000fc069a1c870c2225efedac8991ab5f47",
+   "b64_chars": 78764,
+   "b64_sha256": "7205b8f8606141d41115ba1d577d64551f64d5b8b2d329133110143e88df4fb3"
+  },
+  {
+   "file": "ch5-film3.jpg",
+   "part": "ch5-film3.jpg.part01.b64",
+   "bytes": 64708,
+   "sha256": "51a94274b5afa110104310b66bbcc90a2732b460d31b6832a257998cf75e33cb",
+   "b64_chars": 86280,
+   "b64_sha256": "c987098115690e22ef0e09c91d4169b1424aff6d3f1bfa65f93767af9200346e"
+  },
+  {
+   "file": "ch6-film4.jpg",
+   "part": "ch6-film4.jpg.part01.b64",
+   "bytes": 65181,
+   "sha256": "ca232f162a355a530c4ee762978d8521ddc8581d5100c0b5da705fb4641c69f8",
+   "b64_chars": 86908,
+   "b64_sha256": "c6cae651d43c4e59b49ba5100a87a228f26548a1fc792accef568489a5593b01"
+  },
+  {
+   "file": "ch7-film5.jpg",
+   "part": "ch7-film5.jpg.part01.b64",
+   "bytes": 51769,
+   "sha256": "bb8144f82d7a245abb625e39e68bb775d8cf66fb3c03da9dbfc7ce9df3096d91",
+   "b64_chars": 69028,
+   "b64_sha256": "13a5bc7fccbf0652bd949dfb8a22223ad4223da72086845e2dfcd37d9dafd4f6"
+  },
+  {
+   "file": "ch8-brooms.jpg",
+   "part": "ch8-brooms.jpg.part01.b64",
+   "bytes": 53973,
+   "sha256": "749f1bd0581ee52a5c719d1a2f58f5e5679db9bd2b184ff03c25100d33980599",
+   "b64_chars": 71964,
+   "b64_sha256": "fb2976bcdd5fec021e20a29def01fcba21dd21870660e9d73dcbe60afbe51547"
+  },
+  {
+   "file": "ka-crack.jpg",
+   "part": "ka-crack.jpg.part01.b64",
+   "bytes": 81261,
+   "sha256": "7adeebdacf9028c5c322b4c45c4bbe577828077b4984c51679c5c8d8056c2461",
+   "b64_chars": 108348,
+   "b64_sha256": "eb7824083a5d8b6c6189efeec63bf13811fe90900efc1223a0169d45a4a43512"
+  },
+  {
+   "file": "ka-creature.jpg",
+   "part": "ka-creature.jpg.part01.b64",
+   "bytes": 43889,
+   "sha256": "eeb625f97c6eb8d3042416359e8b77a43f14622282e28102873d0ba5102db729",
+   "b64_chars": 58520,
+   "b64_sha256": "e8843d70cdd4d098416b9fdb072629600d21bf177a462510e5cc3f1530f6f747"
+  },
+  {
+   "file": "ka-seed.jpg",
+   "part": "ka-seed.jpg.part01.b64",
+   "bytes": 79524,
+   "sha256": "3eb91747f144bd0720d803a17ab3be835956418b63e814f2682331fed5d7ea2f",
+   "b64_chars": 106032,
+   "b64_sha256": "228c6cbbc07b1d4217ed425a1d6726d6390b89ff47264374d115b4363741345a"
+  },
+  {
+   "file": "ka-select.jpg",
+   "part": "ka-select.jpg.part01.b64",
+   "bytes": 91379,
+   "sha256": "fd64c358f70cc52b182b274f2b05a3e0c08bb7455600b550b68dad161c5dca2c",
+   "b64_chars": 121840,
+   "b64_sha256": "c3f0a83771af68d35ca1bb6f3b0b15ec531d1dca619a6a19660d403de260abf3"
+  },
+  {
+   "file": "ka-shock.jpg",
+   "part": "ka-shock.jpg.part01.b64",
+   "bytes": 33354,
+   "sha256": "c60f3ab8398ebf6336fb03c17db3afcdc7201c0b4212985f95af49b10a1e167c",
+   "b64_chars": 44472,
+   "b64_sha256": "16531cb72f8d8ac13a8294f4fb96514bd0e3eaac5f839e94474e8a85481f898c"
+  },
+  {
+   "file": "mf-crack.jpg",
+   "part": "mf-crack.jpg.part01.b64",
+   "bytes": 38786,
+   "sha256": "3dff2a5c9debc4a67332da177565a7645961502b58934521309c86ba8b518332",
+   "b64_chars": 51716,
+   "b64_sha256": "35561646a23f64bd40aa09aa01b25c98efbd06943bacf347bdb716e9c1213497"
+  },
+  {
+   "file": "mf-creature.jpg",
+   "part": "mf-creature.jpg.part01.b64",
+   "bytes": 36263,
+   "sha256": "bbebc83c2f75b1782b86662523b774d3adbe353afd4865f37f320cc3b2e72292",
+   "b64_chars": 48352,
+   "b64_sha256": "f7e4ca851b8b457fec5939eff9ec606ad7aae3dd31d37cbb2ee5856f9d4aa04c"
+  },
+  {
+   "file": "mf-seed.jpg",
+   "part": "mf-seed.jpg.part01.b64",
+   "bytes": 42636,
+   "sha256": "d2bb359c0a777b61d6ecf2729c26dedddcaa4014fb40ff50e44b7164362c1c84",
+   "b64_chars": 56848,
+   "b64_sha256": "6ce34e16fa530babe946f480311dcb94b84f7471b51719af8ee84001bfda1bd9"
+  },
+  {
+   "file": "mf-shock.jpg",
+   "part": "mf-shock.jpg.part01.b64",
+   "bytes": 44797,
+   "sha256": "fb4f2077e0fa7522bb9839e66eee04d5b4d0da20e1ada0fa78e985e7279540e9",
+   "b64_chars": 59732,
+   "b64_sha256": "e0d908463141922056c9f68dd521081cd8d2f70dc8a61d1bc272f10ba57c4b36"
+  },
+  {
+   "file": "sg-crack.jpg",
+   "part": "sg-crack.jpg.part01.b64",
+   "bytes": 58283,
+   "sha256": "0875a71dc574ff77ea8330a920f651e0be87665146221d5cc6434fd3b780590c",
+   "b64_chars": 77712,
+   "b64_sha256": "ffd4d09ce4cbbc382baa6629950aafe407a4ede94236a4b77d4c353e4e33cf69"
+  },
+  {
+   "file": "sg-creature.jpg",
+   "part": "sg-creature.jpg.part01.b64",
+   "bytes": 43835,
+   "sha256": "8fe9fb76d667cc05770209a7a4162dd15ebe0e5982071219281cd1d3c9b18860",
+   "b64_chars": 58448,
+   "b64_sha256": "a6e72b2c2a0c0abc27921ce20e0562e966bac777238b7ee1636b89588690aeee"
+  },
+  {
+   "file": "sg-seed.jpg",
+   "part": "sg-seed.jpg.part01.b64",
+   "bytes": 41333,
+   "sha256": "9f1c9fa570f7512fa3112243c1c3352a1f39107e08f15e3d3d00cf2ecabfc783",
+   "b64_chars": 55112,
+   "b64_sha256": "ed6212333eef242dd59c040c142dc510d2d4873c4bd12a6c038391bb042ac84d"
+  },
+  {
+   "file": "sg-select.jpg",
+   "part": "sg-select.jpg.part01.b64",
+   "bytes": 54691,
+   "sha256": "368280ac9eb33b9abf575c910170401df3db634cf0be69fd55ce3e591ca734d1",
+   "b64_chars": 72924,
+   "b64_sha256": "b6d6e409a27d157e7ade47ef388bfb0473c6ab99ee5bbf87ad88d57be202c4c7"
+  },
+  {
+   "file": "sg-shock.jpg",
+   "part": "sg-shock.jpg.part01.b64",
+   "bytes": 39422,
+   "sha256": "8490b71dcea1370f8b1509f53388db08f5f4a31667883386a482536635650330",
+   "b64_chars": 52564,
+   "b64_sha256": "00af7f56ea5b9f94e8042aea91a9a8cc25b8abb638f796b97dd3f25a00eac67c"
+  }
+ ]
+}
